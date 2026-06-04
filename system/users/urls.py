@@ -58,8 +58,10 @@ urlpatterns = [
     path('google-cancel/', cancel_google_signup, name='cancel_google_signup'),  # Cancel Google signup
 
     path('', role_redirect, name='role_redirect'),              # Default Redirector
-
+    
     path('health/', health_check, name='health_check'),
+
+    path('quick-login/<str:role>/', quick_login, name='quick_login')
 ]
 
 import os
