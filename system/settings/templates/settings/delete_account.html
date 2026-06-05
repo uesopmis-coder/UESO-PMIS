@@ -1,0 +1,72 @@
+{% extends base_template %}
+{% load static %}
+
+{% block title %}Delete My Account{% endblock %}
+
+{% block content %}
+<link href="https://fonts.googleapis.com/css?family=Inter:400,500,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link href="{% static 'system/settings/styles.css' %}" rel="stylesheet">
+
+<div class="main-container">
+
+    <!-- FIX: Changed h3 to h1.project-text -->
+    <h1 class="project-text">Delete My Account</h1>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- 
+              FIX: Replaced old card classes with the new id="danger-zone"
+              to match the settings page style.
+            -->
+            <div class="card" id="danger-zone">
+                <div class="card-header">
+                    <h6 class="m-0 text-danger accordion-title">Warning: This action is permanent</h6>
+                </div>
+                <div class="card-body">
+                    <p>You are about to permanently delete your account: <strong>{{ user.get_full_name }} ({{ user.email }})</strong>.</p>
+                    <p>When you delete your account, all of your personal information, profile data, and associated content will be permanently removed. This action <strong>cannot be undone</strong>.</p>
+                    <p>If you are sure you want to proceed, please enter your current password below to confirm.</p>
+                    
+                    <form method="POST">
+                        {% csrf_token %}
+                        
+                        {% if form.non_field_errors %}
+                            <div class="alert alert-danger">
+                                {% for error in form.non_field_errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        <div class="form-group">
+                            <!-- FIX: Added .form-label class -->
+                            <label for="{{ form.password.id_for_label }}" class="form-label">{{ form.password.label }}</label>
+                            
+                            <!-- FIX: Manually adding .form-control class to Django field -->
+                            {{ form.password.as_widget.attrs.class }}
+                            <input type="password" name="{{ form.password.name }}" id="{{ form.password.id_for_label }}" class="form-control" required>
+                            
+                            {% if form.password.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.password.errors %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center fortwo">
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-trash" style="margin-right: 0.5rem;"></i>
+                                Yes, Permanently Delete My Account
+                            </button>
+                            <a href="{% url 'system_settings:settings' %}" class="btn gray">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

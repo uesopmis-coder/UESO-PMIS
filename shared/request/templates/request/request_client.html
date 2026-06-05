@@ -1,6 +1,6 @@
 {% extends "base_public.html" %}
 {% block content %}
-
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,474 +9,48 @@
 <title>Requests</title>
 
 <link href="https://fonts.googleapis.com/css?family=Inter:400,500,600,700,800&display=swap" rel="stylesheet">
-
-<!-- General -->
-<style>
-    body {
-        background: #F9F9F9;
-        font-family: 'Inter', sans-serif;
-    }
-
-	main {
-		display: flex;
-		flex-direction: row;
-		gap: 70px;
-		margin: 70px;
-		justify-content: space-between;
-	}
-
-	h2 {
-		font-size: 1.75rem;
-		font-weight: 500;
-	}
-
-	.hidden {
-		display: none;
-	}
-</style>
-
-<!-- Left -->
-<style>
-	.widgets {
-		background-color: white;
-		border-radius: 1rem;
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-		padding: 20px;
-		max-height: 650px;
-		display: flex;
-		flex-direction: column;
-		gap: 30px; 
-		min-width: 270px;
-	}
-
-	.widgets-header {
-		padding: 20px 20px 0 20px;
-		display: flex;
-		align-items: center;
-		height: 4rem; 
-	}  
-
-	.widgets button {
-		border: 0.11rem solid #262626;
-		border-radius: 5rem;
-		padding: 0.5rem 1rem;
-		font-size: 1rem;
-		font-weight: 400; 
-		height: 3rem;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		background-color: white;
-		color: #262626;
-	}
-
-	.widgets button:hover {
-		background-color: #5b5b5b;
-		color: white; 
-	}
-
-	.widgets button.active {
-		background-color: #262626;
-		color: white; 
-	} 
-</style>
-
-<!-- Right -->
-<style>
-	.list {
-		background-color: white;
-		border-radius: 1rem;
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-		padding: 50px;
-		height: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 30px; 
-		width: 100%;
-	}
-
-	.add-request-btn {
-		background: #063A1C;
-		color: white;
-		padding: 15px 45px;
-		border-radius: 8px;
-		font-size: 20px;
-		font-family: 'Inter', sans-serif;
-        font-weight: 500;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		box-shadow: 0 2px 8px rgba(10, 108, 68, 0.2);
-		text-decoration: none;
-        border-radius: 18px;
-        cursor: pointer;
-        transition: background 0.2s;
-	}   
-
-	.add-request-btn:hover {
-		background: #04521c;
-		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(10, 108, 68, 0.3);
-		text-decoration: none;
-		color: white;
-	}
-
-	.files-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		height: 4rem;
-	}
-
-	.files-header > div {
-		display: flex;
-		align-items: center; 
-	}
-
-	.files-header h2 {
-		margin: 0;       
-		line-height: 1;   
-	}
-
-	.list-holder {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		height: auto;  /* Make sure height is auto */
-	}
-
-	.list-item {
-		background: #E6F2FB;
-		border-radius: 1rem;
-		padding: 1rem 1.5rem;
-		box-shadow: 0 2px 5px rgba(0,0,0,0.15);
-	}
-
-	.status-counts {
-		display: flex;
-		gap: 2rem;
-		margin-bottom: 1rem;
-		padding: 0 1rem;
-	}
-	
-	.status-count {
-		font-size: 1.25rem;
-		display: flex;
-		align-items: baseline;
-		gap: 0.5rem;
-	}
-
-	.status-count .number {
-		font-size: 1.6rem;
-		font-weight: 700;
-	}
-
-	.status-count .label {
-		font-weight: 400;
-	}
-</style>
-
-<!-- Search Bar Styles -->
-<style>
-	.search-container {
-		width: 100%;
-		display: flex;
-		gap: 10px;
-	}
-
-	.search-bar {
-		width: 100%;
-		height: 52px;
-		background: #F2F4F8;
-		display: flex;
-		align-items: center;
-		padding: 0 16px;
-		border-bottom: 1.09px solid #535353;
-		border-radius: 8px;
-		box-sizing: border-box;
-	}
-
-	.search-bar input {
-		flex: 1;
-		border: none;
-		outline: none;
-		background: transparent;
-		font-size: 18px;
-		font-family: 'Inter', sans-serif;
-		font-weight: 400;
-		color: #5A5252;
-		padding: 0 10px;
-	}
-</style>
-
-<!-- Sort/Filter Styles -->
-<style>
-	.filter-dropdown {
-		display: none;
-		position: absolute;
-		top: 420px;
-		right: 120px;
-		z-index: 1000;
-		background: white;
-		border: 1px solid #e5e7eb;
-		border-radius: 12px;
-		box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-		padding: 24px 32px;
-		min-width: 340px;
-	}
-
-	.filter-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		grid-gap: 24px;
-	}
-
-	.filter-dropdown label {
-		font-weight: 500;
-		color: #374151;
-		display: flex;
-		flex-direction: column;
-	}
-
-	.filter-dropdown select,
-	.filter-dropdown input[type="date"] {
-		width: 100%;
-		margin-top: 6px;
-		border: 1px solid #e5e7eb;
-		border-radius: 6px;
-		padding: 6px 10px;
-		font-size: 15px;
-		font-family: 'Inter', sans-serif;
-		background: #f9f9f9;
-		color: #374151;
-	}
-
-	.filter-dropdown select {
-		appearance: none;
-		-webkit-appearance: none;
-		-moz-appearance: none;
-		padding-right: 2rem;
-		background: url("data:image/svg+xml;utf8,<svg width='16' height='11' viewBox='0 0 16 11' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M7.99976 7.19417L13.9025 1.29147C14.0125 1.17758 14.144 1.08674 14.2895 1.02424C14.435 0.961746 14.5915 0.92885 14.7498 0.927474C14.9082 0.926098 15.0652 0.95627 15.2117 1.01623C15.3583 1.07619 15.4914 1.16473 15.6034 1.27669C15.7153 1.38866 15.8039 1.5218 15.8638 1.66835C15.9238 1.8149 15.954 1.97192 15.9526 2.13026C15.9512 2.28859 15.9183 2.44506 15.8558 2.59055C15.7933 2.73604 15.7025 2.86762 15.5886 2.97762L8.84283 9.72339C8.61921 9.94694 8.31596 10.0725 7.99976 10.0725C7.68356 10.0725 7.38031 9.94694 7.15669 9.72339L0.41092 2.97762C0.297028 2.86762 0.206183 2.73604 0.143687 2.59055C0.0811915 2.44506 0.0482959 2.28859 0.04692 2.13026C0.0455441 1.97192 0.0757155 1.8149 0.135674 1.66835C0.195632 1.5218 0.284176 1.38866 0.39614 1.27669C0.508103 1.16473 0.641244 1.07619 0.787794 1.01623C0.934343 0.95627 1.09137 0.926098 1.2497 0.927474C1.40804 0.92885 1.56451 0.961746 1.71 1.02424C1.85548 1.08674 1.98706 1.17758 2.09706 1.29147L7.99976 7.19417Z' fill='%23374151'/></svg>")
-        		no-repeat right 0.75rem center;
-  		background-size: 13px 8px;
-	}
-
-	.filter-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 10px;
-		margin-top: 24px;
-	}
-
-	.filter-apply {
-		background: #063A1C;
-		color: white;
-		padding: 10px 28px;
-		border-radius: 8px;
-		font-size: 16px;
-		font-family: 'Inter', sans-serif;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background 0.2s;
-		border: none;
-	}
-
-	.filter-close {
-		background: #e5e7eb;
-		color: #374151;
-		padding: 10px 18px;
-		border-radius: 8px;
-		font-size: 16px;
-		font-family: 'Inter', sans-serif;
-		font-weight: 500;
-		cursor: pointer;
-		border: none;
-	}
-
-	.search-bar > input[type="text"] {
-		border: none;
-	}
-</style>
-
-<!-- Table Section -->
-<style>
-    .table {
-        width: 100%;
-        border-collapse: collapse;
-        background: #FEFCFC;
-        border: 1px solid rgba(0,0,0,0.18);
-        overflow: visible;
-    }
-
-    .table th {
-        font-size: 16px;
-        font-weight: 500;
-        background: rgba(217, 217, 217, 0.2);
-        border-bottom: 1px solid rgba(0,0,0,0.18);
-        padding: 14px 12px;
-        text-align: left;
-        font-family: 'Inter', Arial, sans-serif;
-    }
-
-    .table td {
-        font-size: 15px;
-        font-weight: 400;
-        border: none;
-        border-bottom: 1px solid rgba(0,0,0,0.18);
-        padding: 14px 12px;
-        text-align: left;
-        font-family: 'Inter', Arial, sans-serif;
-        position: relative;
-        overflow: visible;
-    }
-
-    .table tr:last-child td {
-        border-bottom: none;
-    }
-
-    .settings-icon {
-        width: 16px;
-        height: 16px;
-        align-items: center;
-        justify-content: center;
-        display: inline-block;
-        vertical-align: middle;
-        cursor: pointer;
-    }
-
-    .table th.settings-col, .table td.settings-col {
-        text-align: center !important;
-    }
-</style>
-
-<!-- Pagination Styles -->
-<style>
-	.pagination-container {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.pagination-button {
-		padding: 0.75rem 1rem;
-		border: 1px solid #E5E7EB;
-		background: white;
-		color: #4B5563;
-		border-radius: 8px;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		font-weight: 500;
-		text-decoration: none;
-	}
-
-	.pagination-button:hover {
-		background: #F3F4F6;
-		border-color: #0A6C44;
-		color: #0A6C44;
-	}
-
-	.pagination-button.active {
-		background: #0A6C44;
-		color: white;
-		border-color: #0A6C44;
-	}
-
-	.pagination-button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.page-info {
-		margin: 0 1rem;
-		color: #4B5563;
-		font-weight: 500;
-	}
-</style>
-
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link href="{% static 'shared/projects/u_module_styles.css' %}" rel="stylesheet">
 </head>
 
 <body>
 
-<main>
+<div class="main">
 	<div class="widgets">
-		<div class="widgets-header">
-			<h2>My Updates</h2>
-		</div>
-		<div class="my-updates-list">
+		<div class="alerts-title">My Updates</div>
+		<div class="alert-list">
 			{% if my_updates %}
-				<ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:25px;max-height:500px;overflow-y:auto;">
 				{% for update in my_updates %}
-					<li>
-						<a href="{% url 'request_details_dispatcher' update.request_id %}"
-						   class="my-update-link{% if not update.viewed %} my-update-unviewed{% endif %} my-update-block">
-							<div>
-								{{ update.message }}
-								<div style="font-size:0.95em;color:#888;margin-top:8px;">
-									{{ update.updated_at|date:'M d, Y H:i' }}
-									{% if not update.viewed %}
-										<span style="background:#E37910;color:white;border-radius:8px;padding:2px 8px;font-size:0.8em;margin-left:8px;">New</span>
-									{% endif %}
-								</div>
-							</div>
-						</a>
-					</li>
+				<div class="alert-item" onclick="window.location.href='{% url 'request_details_dispatcher' update.request_id %}'">
+					<div class="alert-title">{{ update.request.title }}</div>
+					<div class="alert-status">{{ update.message }}</div>
+					<div class="alert-date">
+						{{ update.updated_at|date:"M d, Y - h:i A" }}
+						{% if not update.viewed %}
+							<span style="background:#E37910;color:white;border-radius:8px;padding:2px 8px;font-size:11px;margin-left:8px;">New</span>
+						{% endif %}
+					</div>
+				</div>
 				{% endfor %}
-				</ul>
-				<style>
-				.my-update-link {
-					color: #000000;
-					text-decoration: none;
-					font-weight: 400;
-				}
-				.my-update-link.my-update-unviewed {
-					font-weight: 700;
-				}
-				.my-update-block {
-					display: block;
-					padding: 8px 10px;
-					border-radius: 8px;
-					transition: background 0.15s;
-				}
-				.my-update-block:hover {
-					background: #f3f4f6;
-					text-decoration: none;
-				}
-				.my-updates-list ul::-webkit-scrollbar {
-					width: 8px;
-				}
-				.my-updates-list ul::-webkit-scrollbar-thumb {
-					background: #e5e7eb;
-					border-radius: 6px;
-				}
-				.my-updates-list ul {
-					scrollbar-width: thin;
-					scrollbar-color: #e5e7eb #fff;
-				}
-				</style>
 			{% else %}
-				<div style="color:#888;font-size:1em; text-align:center;">No recent updates.</div>
+				<div class="no-data" style="margin-top: 2rem; margin-left: 0.8rem;">No updates at this time</div>
 			{% endif %}
 		</div>
 	</div>
 
 	<div class="list">
-		<div class="files-header">
-			<h2>Request Overview</h2>
-			<div style="display: flex; gap: 0.7rem;">
-				<a class="add-request-btn">Submit Request</a>
-			</div>
-		</div>
 
 		<!-- Search Bar -->
 		<div class="search-container">
 			<form class="search-bar" method="get" action="">
-				<svg width="20" height="20"> <use href="#icon-search"></use> </svg>
-				<input type="text" name="search" placeholder="Search" value="{{ search|default:'' }}"/>
+				<svg width="16" height="16"> <use href="#icon-search"></use> </svg>
+				<input type="text" name="search" placeholder="Search Request Title" value="{{ search|default:'' }}"/>
 				<button type="button" id="filterBtn" style="background:none;border:none;padding:0;margin-right:5px;cursor:pointer;">
-					<svg width="20" height="20"> <use href="#icon-filter"></use> </svg>
+					<svg width="16" height="16"> <use href="#icon-filter"></use> </svg>
 				</button>
 				
 				<div id="filterDropdown" class="filter-dropdown">
-					<div class="filter-grid">
+					<div class="filter-grid" style="grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr);">
 
 						
 						<!-- Sort By -->
@@ -504,32 +78,42 @@
 							Status
 							<select name="status" style="width:100%;margin-top:6px;">
 								<option value="">All Status</option>
-								<option value="RECEIVED" {% if status == 'RECEIVED' %}selected{% endif %}>Received</option>
-								<option value="UNDER_REVIEW" {% if status == 'UNDER_REVIEW' %}selected{% endif %}>Under Review</option>
-								<option value="APPROVED" {% if status == 'APPROVED' %}selected{% endif %}>Approved</option>
-								<option value="REJECTED" {% if status == 'REJECTED' %}selected{% endif %}>Rejected</option>
-								<option value="ENDORSED" {% if status == 'ENDORSED' %}selected{% endif %}>Endorsed</option>
-								<option value="DENIED" {% if status == 'DENIED' %}selected{% endif %}>Denied</option>
+								{% for value, label in status_choices %}
+									<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+								{% endfor %}
 							</select>
 						</label>
 
-						<!-- Bottom Right - Date -->
+						<!-- Date From -->
 						<label style="font-weight:500;color:#374151;display:flex;flex-direction:column;">
-							Date
-							<input type="date" name="date" value="{{ date|default:'' }}" style="width:100%;margin-top:6px;" />
+							Date From
+							<input type="date" name="date_from" value="{{ date_from|default:'' }}" style="width:100%;margin-top:6px;" />
+						</label>
+
+						<!-- Date To -->
+						<label style="font-weight:500;color:#374151;display:flex;flex-direction:column;">
+							Date To
+							<input type="date" name="date_to" value="{{ date_to|default:'' }}" style="width:100%;margin-top:6px;" />
 						</label>
 					</div>
 
 					<!-- Buttons Row -->
 					<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;">
 					<button type="submit" class="filter-apply">Apply</button>
-					<button type="button" id="closeFilter" class="filter-close">Close</button>
+					<button type="button" id="closeFilter" class="filter-close">Clear Filters</button>
 					</div>
 				</div>
 			</form>
 		</div>
 		
-		<table class="table">
+		<div class="files-header">
+			<h2>Request Overview</h2>
+			<div style="display: flex; gap: 0.7rem;">
+				<a class="add-request-btn submit-btn">Submit Request</a>
+			</div>
+		</div>
+		
+		<table class="user-table">
 			<thead>
 				<tr>
 					<th>Title</th>
@@ -541,10 +125,10 @@
 			<tbody>
 				{% for req in requests %}
 				<tr>
-					<td><a href="{% url 'request_details_dispatcher' req.pk %}" style="color:#063A1C;font-weight:600;text-decoration:underline;" title="{{ req.title }}">{{ req.title|truncatechars:15 }}</a></td>
-					<td>{{ req.submitted_at|date:'Y-m-d H:i' }}</td>
-					<td>{{ req.updated_at|date:'Y-m-d H:i' }}</td>
-					<td>{{ req.get_status_display }}</td>
+					<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><a href="{% url 'request_details_dispatcher' req.pk %}" title="{{ req.title }}">{{ req.title }}</a></td>
+					<td style="white-space:nowrap;">{{ req.submitted_at|date:'Y-m-d H:i' }}</td>
+					<td style="white-space:nowrap;">{{ req.updated_at|date:'Y-m-d H:i' }}</td>
+					<td style="white-space:nowrap;">{{ req.get_status_display }}</td>
 				</tr>
 				{% empty %}
 				<tr><td colspan="4" style="text-align:center;color:gray;padding:2rem;">No requests found.</td></tr>
@@ -577,15 +161,13 @@
 				<button class="pagination-button" disabled>Next</button>
 				<button class="pagination-button" disabled>Last</button>
 			{% endif %}
-
-			<span class="page-info">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
 		</div>
 	</div>
-</main>
+</div>
 
 
 <!-- SVG Icons -->
-<svg>
+<svg style="display: none;">
 
 	<!-- Search -->
 	<symbol id="icon-search" viewBox="0 0 21 21" fill="none">
@@ -599,116 +181,57 @@
 
 </svg>
 
-<!-- Submit Request Modal Styles -->
-<style>
-    .event-modal {
-        position: fixed;
-        z-index: 9999;
-        left: 0; top: 0; width: 100vw; height: 100vh;
-        background: rgba(0,0,0,0.25);
-        display: none; align-items: center; justify-content: center;
-    }
-
-    .event-modal-content {
-        background: #fff;
-        border-radius: 12px;
-        padding: 2rem 2rem 2rem 2rem;
-        min-width: 400px;
-        max-width: 95vw;
-        max-height: 40px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-        position: relative;
-        overflow-y: auto;
-    }
-
-    .event-modal-content h2 { margin-top:0; font-size:1.5rem; color:#000; font-weight: 400; }
-    .event-modal-content .close {
-        position: absolute; right: 1.5rem; top: 1.25rem;
-        font-size: 1.5rem; color: #888; cursor: pointer;
-    }
-
-    .form-group {
-        display: flex;
-        align-items: flex-start;
-        gap: 1rem;
-        margin-bottom: 15px;
-    }
-    .form-label {
-        font-weight: 600;
-        color: #374151;
-        font-size: 0.95rem;
-    }
-
-    .submit-btn {
-        background-color: #0A6C44;
-        color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 1rem;
-        font-weight: 600;
-    }
-
-    .back-btn {
-        background-color: #E5E7EB;
-        color: #374151;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 1rem;
-        font-weight: 600;
-    }
-
-	.required { color: #DC2626; }
-    .form-actions { display: flex; gap: 1rem; margin-top: 40px; }
-	.submit-btn:hover { background-color: #07532F; }
-    .back-btn:hover { background-color: #D1D5DB; }
-    textarea { resize: none; }
-
-    input[type="text"], input[type="date"], input[type="time"], textarea, select {
-        flex: 1;
-        border-radius: 8px;
-        border: 1px solid #e5e7eb;
-        padding: 0.75rem;
-        font-size: 1rem;
-        font-family: 'Inter', sans-serif;
-    }
-</style>
-
 <!-- Submit Request Modal -->
 <div id="submit-request-modal" class="event-modal" style="display:none;align-items:center;justify-content:center;">
-    <div class="event-modal-content" style="min-width:400px;max-width:95vw;max-height:535px;height:535px;overflow-y:auto;">
+    <div class="event-modal-content">
         <span class="close" id="close-submit-request-modal">&times;</span>
         <h2 id="submit-request-modal-title" style="margin-bottom:1rem;">Submit Request</h2>
-        <form id="submit-request-form" method="post" enctype="multipart/form-data" action="/requests/submit/">
+        <form id="submit-request-form" method="post" enctype="multipart/form-data" action="/requests/submit/" novalidate>
             {% csrf_token %}
-            <div class="form-group">
-                <label class="form-label">Project Title <span class="required">*</span></label>
-                <input type="text" name="title" id="request_title" required style="flex:1;">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Name of Your Organization <span class="required">*</span></label>
-                <input type="text" name="organization" id="request_organization" required style="flex:1;">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Primary Location <span class="required">*</span></label>
-                <input type="text" name="primary_location" id="request_primary_location" required style="flex:1;">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Primary Beneficiaries <span class="required">*</span></label>
-                <input type="text" name="primary_beneficiary" id="request_primary_beneficiary" required style="flex:1;">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Brief Summary <span class="required">*</span></label>
-                <textarea name="summary" id="request_summary" rows="2" required style="flex:1;border-radius:8px;border:1px solid #e5e7eb;padding:0.75rem;font-size:1rem;"></textarea>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Letter of Intent <span class="required">*</span></label>
-                <input type="file" name="letter_of_intent" id="request_letter_of_intent" required style="flex:1;">
-            </div>
-            <div class="form-actions" style="justify-content:flex-end;">
+			<div class="grid">
+				<section style="flex-grow: 1;">
+					<div class="form-group">
+						<label class="form-label">Project Title <span class="required">*</span></label>
+						<input type="text" name="title" id="request_title" required style="flex:1;">
+					</div>
+					<div class="form-group">
+						<label class="form-label">Name of Your Organization <span class="required">*</span></label>
+						<input type="text" name="organization" id="request_organization" required style="flex:1;">
+					</div>
+					<div class="form-group">
+						<label class="form-label">Primary Location <span class="required">*</span></label>
+						<input type="text" name="primary_location" id="request_primary_location" required style="flex:1;">
+					</div>
+					<div class="form-group">
+						<label class="form-label">Primary Beneficiaries <span class="required">*</span></label>
+						<input type="text" name="primary_beneficiary" id="request_primary_beneficiary" required style="flex:1;">
+					</div>
+				</section>
+				<section>
+					<div class="form-group">
+						<label class="form-label">Brief Summary <span class="required">*</span></label>
+						<textarea name="summary" id="request_summary" rows="5" required style="flex:1;border-radius:8px;padding:0.75rem;font-size:1rem;"></textarea>
+					</div>
+					<div class="form-group">
+						<label class="form-label">Letter of Intent <span class="required">*</span></label>
+						<div style="width: 100%;">
+							<div class="upload-area" onclick="document.getElementById('request_letter_of_intent').click()">
+								<svg class="icon-upload" width="24" height="24"><use href="#icon-upload"></use></svg>
+								<span class="upload-text">Click to upload</span>
+								<input class="hidden" type="file" name="letter_of_intent" id="request_letter_of_intent" required style="flex:1;" accept="application/pdf">
+							</div>
+							<div class="file-preview" id="file-preview" style="display: none; margin-top: 0.75rem;">
+								<div class="file-info">
+									<svg width="16" height="16"><use href="#icon-upload"></use></svg>
+									<span id="file-name"></span>
+								</div>
+							</div> 
+						</div>
+					</div>
+				</section>
+			</div>
+
+            <div class="form-actions">
                 <button type="button" class="back-btn" id="cancel-submit-request-modal">Cancel</button>
                 <button type="submit" class="submit-btn">Submit Request</button>
             </div>
@@ -716,6 +239,21 @@
     </div>
 </div>
 
+<!-- SVG Sprite Section -->
+<svg style="display:none;">
+
+	<!-- Upload Icon -->
+	<symbol id="icon-upload" viewBox="0 0 24 24" fill="currentColor">
+		<path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+		<path d="M12,11L8,15H16L12,11Z" />
+	</symbol>
+
+	<!-- Clock Icon -->
+	<symbol id="icon-clock" viewBox="0 0 24 24" fill="currentColor">
+		<path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M16.2,16.2L11,13V7H12.5V12.2L17,14.9L16.2,16.2Z" />
+	</symbol>
+
+</svg>
 
 <script>
 	// Modal open/close logic for Submit Request
@@ -759,13 +297,122 @@
 	if (closeFilter && filterDropdown) {
 		closeFilter.addEventListener('click', function(e) {
 			e.preventDefault();
-			filterDropdown.style.display = 'none';
+			// Clear filters by redirecting to base URL without query parameters
+			window.location.href = window.location.pathname;
 		});
 	}
 	// Hide dropdown when clicking outside
 	document.addEventListener('mousedown', function(e) {
 		if (filterDropdown && !filterDropdown.contains(e.target) && e.target !== filterBtn) {
 			filterDropdown.style.display = 'none';
+		}
+	});
+
+	// Success Toast
+	document.addEventListener('DOMContentLoaded', function() {
+		const urlParams = new URLSearchParams(window.location.search);
+		const success = urlParams.get('success');
+		const action = urlParams.get('action');
+		const title = urlParams.get('title');
+
+		if (success === 'true' && action) {
+			const actionMessages = {
+				'submitted': 'Request Submitted Successfully!'
+			};
+
+			const message = actionMessages[action] || 'Action Completed Successfully!';
+
+			const toast = document.createElement('div');
+			toast.id = 'successToast';
+			toast.style.cssText = 'display:block;position:fixed;top:20px;right:20px;background:#10b981;color:white;padding:1rem 1.5rem;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:10000;font-size:1rem;font-weight:500;min-width:300px;';
+			toast.innerHTML = `
+				<div style="display:flex;align-items:center;gap:0.75rem;">
+					<i class="fa-solid fa-check-circle" style="font-size:1.5rem;"></i>
+					<div>
+						<div style="font-weight:600;margin-bottom:0.25rem;">${message}</div>
+						<div style="font-size:0.875rem;opacity:0.9;">${title ? decodeURIComponent(title) : 'Client Request'}</div>
+					</div>
+				</div>
+			`;
+			document.body.appendChild(toast);
+
+			// Auto-hide after 4 seconds
+			setTimeout(function() {
+				toast.style.opacity = '0';
+				toast.style.transition = 'opacity 0.3s';
+				setTimeout(function() {
+					toast.remove();
+					// Clean URL
+					window.history.replaceState({}, document.title, window.location.pathname);
+				}, 300);
+			}, 4000);
+		}
+	});
+	
+	// Unified validation for Submit Request Modal
+	document.getElementById('submit-request-form').addEventListener('submit', function(e) {
+		let valid = true;
+		let firstError = null;
+		let errorQueue = [];
+		
+		// Remove previous errors
+		this.querySelectorAll('.field-validation-error').forEach(el => el.remove());
+		this.querySelectorAll('.error-input').forEach(el => el.classList.remove('error-input'));
+		
+		// Get all required fields
+		const fields = Array.from(this.querySelectorAll('input[required], select[required], textarea[required]'));
+		
+		fields.forEach(field => {
+			let label = '';
+			const labelEl = field.closest('.form-group')?.querySelector('label');
+			if (labelEl) label = labelEl.textContent.replace(/\*/g, '').replace(/:/g, '').trim();
+			if (!label) label = field.name || field.id || 'Field';
+			
+			let errorMsg = '';
+			
+			if (field.tagName === 'SELECT' && (!field.value || field.value === '')) {
+				errorMsg = `${label} is required.`;
+			} else if (field.type === 'file' && !field.files.length) {
+				errorMsg = `${label} is required.`;
+			} else if ((field.tagName === 'INPUT' || field.tagName === 'TEXTAREA') && field.type !== 'file' && !field.value.trim()) {
+				errorMsg = `${label} is required.`;
+			}
+			
+			if (errorMsg) {
+				valid = false;
+				field.classList.add('error-input');
+				errorQueue.push({field, message: errorMsg});
+				if (!firstError) firstError = field;
+			}
+		});
+		
+		// Render errors
+		errorQueue.forEach(errObj => {
+			const err = document.createElement('div');
+			err.className = 'field-validation-error';
+			err.textContent = errObj.message;
+			err.style.color = '#E53E3E';
+			err.style.fontSize = '0.9rem';
+			err.style.marginTop = '0.25rem';
+			errObj.field.closest('.form-group').appendChild(err);
+		});
+		
+		if (!valid) {
+			e.preventDefault();
+			e.stopPropagation();
+			if (firstError && typeof firstError.focus === 'function') firstError.focus();
+			return false;
+		}
+	});
+	
+	document.getElementById('request_letter_of_intent').addEventListener('change', function(e) {
+		const file = e.target.files[0];
+		const preview = document.getElementById('file-preview');
+		if (file) {
+			document.getElementById('file-name').textContent = file.name;
+			preview.style.display = 'block';
+		} else {
+			preview.style.display = 'none';
 		}
 	});
 </script>

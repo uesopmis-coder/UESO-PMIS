@@ -1,10 +1,9 @@
 from django.urls import path
-from .views import calendar_view, add_event, events_json, edit_event, delete_event
+from .views import calendar_view, meeting_event_list, meeting_event_detail, validate_datetime_conflict
 
 urlpatterns = [
     path('', calendar_view, name='calendar'),
-    path('add_event/', add_event, name='add_event'),
-    path('events_json/', events_json, name='events_json'),
-    path('edit_event/', edit_event, name='edit_event'),
-    path('delete_event/<int:event_id>/', delete_event, name='delete_event'),
+    path('events/', meeting_event_list, name='meeting_event_list'),
+    path('events/<int:event_id>/', meeting_event_detail, name='meeting_event_detail'),
+    path('validate-datetime/', validate_datetime_conflict, name='calendar_validate_datetime_conflict'),
 ]

@@ -1,3 +1,4 @@
+import os
 from django.conf import settings
 from django.db import models
 from django.db.models.signals import post_save
@@ -41,6 +42,34 @@ class ClientRequest(models.Model):
         ('DENIED', 'Denied'),
     ])
 
+    class Meta:
+        indexes = [
+            # Primary workflow: Status filtering (RECEIVED, UNDER_REVIEW, APPROVED, etc.)
+            models.Index(fields=['status', '-submitted_at'], name='req_status_submit_idx'),
+            # Submitter lookup (client viewing their requests)
+            models.Index(fields=['submitted_by', '-submitted_at'], name='req_submitter_idx'),
+            # Admin review queue (RECEIVED/UNDER_REVIEW priority)
+            models.Index(fields=['status', 'reviewed_by'], name='req_review_queue_idx'),
+            # Endorsement workflow
+            models.Index(fields=['status', 'endorsed_at'], name='req_endorsed_idx'),
+            # Date range filtering (submitted and updated)
+            models.Index(fields=['submitted_at'], name='req_submitted_date_idx'),
+            models.Index(fields=['updated_at', 'status'], name='req_updated_status_idx'),
+            # Organization search
+            models.Index(fields=['organization'], name='req_org_idx'),
+        ]
+        verbose_name = 'Client Request'
+        verbose_name_plural = 'Client Requests'
+
+    @property
+    def name(self):
+        """Return the file name (without extension) of the uploaded letter_of_intent."""
+        if self.letter_of_intent and self.letter_of_intent.name:
+            filename = os.path.basename(self.letter_of_intent.name)  # e.g. 'client_requests/letters_of_intent/sample.pdf' → 'sample.pdf'
+            name_without_ext, _ = os.path.splitext(filename)          # 'sample'
+            return name_without_ext
+        return ""
+
     
     def __str__(self):
         return self.title
@@ -55,6 +84,20 @@ class ClientRequest(models.Model):
 def log_client_request_action(sender, instance, created, **kwargs):
     user = instance.updated_by or instance.submitted_by or None
     url = reverse('request_details_dispatcher', args=[instance.id])
+    
+    # Create better detail messages
+    if created:
+        details = f"New request from {instance.organization}"
+    else:
+        status_messages = {
+            'PENDING': 'Request is pending review',
+            'APPROVED': 'Your request has been approved',
+            'REJECTED': 'Your request has been rejected',
+            'ENDORSED': 'Your request has been endorsed',
+            'DENIED': 'Your request has been denied',
+        }
+        details = status_messages.get(instance.status, f"Request Status: {instance.get_status_display()}")
+    
     # Only log creation if created
     if created:
         LogEntry.objects.create(
@@ -62,8 +105,8 @@ def log_client_request_action(sender, instance, created, **kwargs):
             action='CREATE',
             model='ClientRequest',
             object_id=instance.id,
-            object_repr=str(instance),
-            details=f"Status: {instance.status}",
+            object_repr=instance.title,
+            details=details,
             url=url,
             is_notification=True
         )
@@ -74,8 +117,8 @@ def log_client_request_action(sender, instance, created, **kwargs):
             action='UPDATE',
             model='ClientRequest',
             object_id=instance.id,
-            object_repr=str(instance),
-            details=f"Status: {instance.status}",
+            object_repr=instance.title,
+            details=details,
             url=url,
             is_notification=True
         )
@@ -90,3 +133,9 @@ class RequestUpdate(models.Model):
 
     class Meta:
         unique_together = ('user', 'request', 'status')
+        indexes = [
+            # User update feed (sorted by date, limited to 10)
+            models.Index(fields=['user', '-updated_at'], name='req_upd_user_date_idx'),
+            # Unread updates check
+            models.Index(fields=['user', 'request', 'viewed'], name='req_upd_unread_idx'),
+        ]

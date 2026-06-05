@@ -5,20 +5,43 @@ from shared.downloadables.models import Downloadable
 from .models import Submission
 from django.utils import timezone
 from django.core.paginator import Paginator
+from django.contrib import messages
 
 
-@role_required(allowed_roles=["UESO", "VP", "DIRECTOR", "COORDINATOR"])
+def get_role_constants():
+    ADMIN_ROLES = ["VP", "DIRECTOR", "UESO"]
+    SUPERUSER_ROLES = ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]
+    FACULTY_ROLE = ["FACULTY", "IMPLEMENTER"]
+    COORDINATOR_ROLE = ["COORDINATOR"]
+    return ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE
+
+
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR", "COORDINATOR"], require_confirmed=True)
 def submission_admin_view(request):
+    ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
     from django.db.models import Case, When, Value, IntegerField
     user_role = getattr(request.user, 'role', None)
-    submissions = Submission.objects.all()
+    # Optimize query with select_related
+    submissions = Submission.objects.select_related(
+        'project',
+        'project__project_leader',
+        'project__project_leader__college',
+        'downloadable',
+        'event',
+        'reviewed_by'
+    )
+    
+    # Filter submissions by college for COORDINATOR
+    if user_role == "COORDINATOR" and request.user.college:
+        submissions = submissions.filter(project__project_leader__college=request.user.college)
 
     # Filters
     sort_by = request.GET.get('sort_by', 'deadline')
     order = request.GET.get('order', 'desc')
     status = request.GET.get('status', '')
     required_form = request.GET.get('required_form', '')
-    date = request.GET.get('date', '')
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
     search = request.GET.get('search', '').strip()
 
     # Apply filters
@@ -26,39 +49,49 @@ def submission_admin_view(request):
         submissions = submissions.filter(status__iexact=status)
     if required_form:
         submissions = submissions.filter(downloadable__id=required_form)
-    if date:
-        submissions = submissions.filter(deadline__date=date)
+    if date_from:
+        submissions = submissions.filter(deadline__date__gte=date_from)
+    if date_to:
+        submissions = submissions.filter(deadline__date__lte=date_to)
     if search:
         submissions = submissions.filter(project__title__icontains=search)
 
     submissions = submissions.distinct()
 
     # Custom ordering for roles
-    if user_role in ["COORDINATOR", "PROGRAM_HEAD", "DEAN"]:
-        submissions = submissions.filter(status__in=["SUBMITTED", "REVISION_REQUESTED", "FORWARDED"])
+    if user_role in ["COORDINATOR"]:
+        submissions = submissions.filter(status__in=["PENDING", "SUBMITTED", "REVISION_REQUESTED", "FORWARDED", "OVERDUE"])
         submissions = submissions.annotate(
             status_priority=Case(
+                When(status="PENDING", then=Value(2)),
                 When(status="SUBMITTED", then=Value(0)),
-                When(status="REVISION_REQUESTED", then=Value(1)),
-                When(status="FORWARDED", then=Value(2)),
-                default=Value(3),
+                When(status="REVISION_REQUESTED", then=Value(3)),
+                When(status="FORWARDED", then=Value(4)),
+                When(status="OVERDUE", then=Value(1)),
+                default=Value(99),
                 output_field=IntegerField(),
             )
         ).order_by('status_priority', '-created_at')
     elif user_role in ["UESO", "VP", "DIRECTOR"]:
+        submissions = submissions.filter(status__in=["PENDING", "FORWARDED", "APPROVED", "REJECTED", "OVERDUE"])
         submissions = submissions.annotate(
             status_priority=Case(
+                When(status="PENDING", then=Value(2)),
                 When(status="FORWARDED", then=Value(0)),
-                default=Value(1),
+                When(status="APPROVED", then=Value(4)),
+                When(status="REJECTED", then=Value(3)),
+                When(status="OVERDUE", then=Value(1)),
+                default=Value(99),
                 output_field=IntegerField(),
             )
         ).order_by('status_priority', '-created_at')
     else:
         submissions = submissions.order_by('-created_at')
 
-    # Filter Options
-    all_statuses = [status[1] for status in Submission.SUBMISSION_STATUS_CHOICES]
-    all_forms = Downloadable.objects.filter(is_submission_template=True)
+    # Filter Options - pass (code, display) tuples
+    all_statuses_admin = [(status[0], status[1]) for status in Submission.SUBMISSION_STATUS_CHOICES if status[0] in ["PENDING", "FORWARDED", "APPROVED", "REJECTED", "OVERDUE"]]
+    all_statuses_coordinator = [(status[0], status[1]) for status in Submission.SUBMISSION_STATUS_CHOICES if status[0] in ["PENDING", "SUBMITTED", "REVISION_REQUESTED", "FORWARDED", "OVERDUE"]]
+    all_forms = Downloadable.objects.filter(is_submission_template=True).only('id', 'file')
 
     # Pagination
     paginator = Paginator(submissions, 20)
@@ -70,28 +103,115 @@ def submission_admin_view(request):
         'search': search,
         'sort_by': sort_by,
         'order': order,
-        'all_statuses': all_statuses,
+        'all_statuses_admin': all_statuses_admin,
+        'all_statuses_coordinator': all_statuses_coordinator,
         'status': status,
         'all_forms': all_forms,
         'required_form': required_form,
-        'date': date,
+        'date_from': date_from,
+        'date_to': date_to,
         'page_obj': page_obj,
         'paginator': paginator,
         'page_range': page_range,
         'querystring': request.GET.urlencode().replace('&page='+str(page_obj.number), '') if page_obj else '',
+        'ADMIN_ROLES': ADMIN_ROLES,
+        'SUPERUSER_ROLES': SUPERUSER_ROLES,
+        'FACULTY_ROLE': FACULTY_ROLE,
+        'COORDINATOR_ROLE': COORDINATOR_ROLE,
     })
 
 
-@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"])
-def add_submission_requirement(request):
-    projects = Project.objects.exclude(status__in=['CANCELLED', 'COMPLETED'])
-    downloadables = Downloadable.objects.filter(is_submission_template=True)
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"], require_confirmed=True)
+def add_submission_requirement(request, project_id=None):
+    from shared.projects.models import ProjectEvent
+    import json
+    
+    # Optimize queries
+    projects = Project.objects.exclude(status__in=['CANCELLED', 'COMPLETED']).select_related(
+        'project_leader',
+        'project_leader__college'
+    ).only('id', 'title', 'start_date', 'estimated_events', 'project_leader')
+    downloadables = Downloadable.objects.filter(is_submission_template=True).only('id', 'file', 'submission_type')
+    
+    # Pre-selected project if coming from project page
+    preselected_project = None
+    if project_id:
+        try:
+            preselected_project = Project.objects.get(id=project_id)
+        except Project.DoesNotExist:
+            preselected_project = None
+    
+    # Utility to safely format dates
+    from datetime import datetime
+    def safe_strftime(dt, fmt):
+        if isinstance(dt, str):
+            try:
+                dt = datetime.fromisoformat(dt)
+            except Exception:
+                return dt  # fallback: just return the string
+        if dt:
+            return dt.strftime(fmt)
+        return None
+
+    # Get event availability and progress for each project
+    project_event_availability = {}
+    for project in projects:
+        available_events = ProjectEvent.objects.filter(
+            project=project, 
+            placeholder=False, 
+            has_submission=False
+        ).order_by('-created_at')
+
+        events_list = []
+        for event in available_events:
+            events_list.append({
+                'id': event.id,
+                'title': event.title,
+                'datetime': safe_strftime(event.datetime, '%Y-%m-%d %H:%M') if event.datetime else 'No date set'
+            })
+
+        # Check if all events are completed (event_progress == estimated_events)
+        all_events_completed = (project.event_progress == project.estimated_events) if project.estimated_events > 0 else False
+        all_events_completed = (project.event_progress == project.estimated_events) if project.estimated_events > 0 else False
+
+        project_event_availability[project.id] = {
+            'has_available_events': available_events.exists(),
+            'available_events': events_list,
+            'all_events_completed': all_events_completed,
+            'event_progress': project.event_progress,
+            'estimated_events': project.estimated_events,
+            'start_date': safe_strftime(project.start_date, '%Y-%m-%d') if project.start_date else None
+        }
+    
+    # Convert to JSON for template
+    project_event_availability_json = json.dumps(project_event_availability)
 
     if request.method == "POST":
         project_id = request.POST.get('project')
         downloadable_ids = request.POST.getlist('downloadables')
         deadline = request.POST.get('deadline')
+        # Ensure deadline is a datetime object
+        from datetime import datetime
+        from django.utils import timezone
+        if deadline:
+            if isinstance(deadline, str):
+                try:
+                    # Try parsing as local datetime (from input type="datetime-local")
+                    deadline_dt = datetime.strptime(deadline, '%Y-%m-%dT%H:%M')
+                except Exception:
+                    try:
+                        deadline_dt = datetime.fromisoformat(deadline)
+                    except Exception:
+                        deadline_dt = None
+                if deadline_dt:
+                    # Make timezone-aware if using Django timezone support
+                    if timezone.is_aware(deadline_dt):
+                        deadline = deadline_dt
+                    else:
+                        deadline = timezone.make_aware(deadline_dt)
+        # ...existing code...
         notes = request.POST.get('notes')
+        selected_event_id = request.POST.get('selected_event')  # Get selected event for event submissions
         
         error = None
         if not project_id:
@@ -104,30 +224,269 @@ def add_submission_requirement(request):
             return render(request, 'submissions/add_submissions.html', {
                 'projects': projects,
                 'downloadables': downloadables,
+                'project_event_availability_json': project_event_availability_json,
+                'preselected_project': preselected_project,
                 'error': error,
             })
         # Create a Submission for each downloadable
+        project = Project.objects.get(id=project_id)
         for downloadable_id in downloadable_ids:
-            Submission.objects.create(
-                project=Project.objects.get(id=project_id),
-                downloadable=Downloadable.objects.get(id=downloadable_id),
+            downloadable = Downloadable.objects.get(id=downloadable_id)
+            
+            # SERVER-SIDE VALIDATION: Check if final submission is allowed
+            if downloadable.submission_type == 'final':
+                # Final submissions are only allowed when all events are completed
+                if project.estimated_events > 0 and project.event_progress != project.estimated_events:
+                    return render(request, 'submissions/add_submissions.html', {
+                        'projects': projects,
+                        'downloadables': downloadables,
+                        'project_event_availability_json': project_event_availability_json,
+                        'preselected_project': preselected_project,
+                    })
+            
+            # For event-type submissions, link to selected event
+            event = None
+            if downloadable.submission_type == 'event' and selected_event_id:
+                try:
+                    event = ProjectEvent.objects.get(
+                        id=selected_event_id,
+                        project=project, 
+                        placeholder=False, 
+                        has_submission=False
+                    )
+                    # Mark this event as having a submission
+                    event.has_submission = True
+                    event.save()
+                except ProjectEvent.DoesNotExist:
+                    pass
+            
+            submission = Submission.objects.create(
+                project=project,
+                downloadable=downloadable,
+                event=event,  # Link to the selected event if it's an event submission
                 deadline=deadline,
                 created_by=request.user,
                 notes=notes,
                 status='PENDING',
                 created_at=timezone.now()
             )
-        return render(request, 'submissions/add_submissions.html', {
-            'projects': projects,
-            'downloadables': downloadables,
-            'success': True,
-        })
+            
+            # Create alert for project members about new submission requirement
+            from shared.projects.models import ProjectUpdate
+            project_members = list(project.providers.all())  # Get all project providers
+            if project.project_leader:  # Add project leader if exists
+                project_members.append(project.project_leader)
+            
+            # Deduplicate users (leader may also be listed as a provider).
+            unique_members = {member.id: member for member in project_members if member}
+            now = timezone.now()
+            updates_to_create = [
+                ProjectUpdate(
+                    user=member,
+                    project=project,
+                    submission=submission,
+                    status='PENDING',
+                    viewed=False,
+                    updated_at=now,
+                )
+                for member in unique_members.values()
+            ]
+            if updates_to_create:
+                ProjectUpdate.objects.bulk_create(updates_to_create, ignore_conflicts=True)
+            
+
+        
+        # Redirect with toast parameters
+        from urllib.parse import quote
+        count = len(downloadable_ids)
+        return redirect(f'/submissions/?success=true&action=created&count={count}&title={quote(project.title)}')
     else:
         return render(request, 'submissions/add_submissions.html', {
             'projects': projects,
             'downloadables': downloadables,
+            'project_event_availability_json': project_event_availability_json,
+            'preselected_project': preselected_project,
         })
 
 
 def add_submission_view(request):
     return render(request, 'submissions/add_submissions.html')
+
+
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"], require_confirmed=True)
+def edit_submission(request, pk):
+    """Edit a submission requirement - only deadline and notes can be changed"""
+    try:
+        submission = Submission.objects.select_related(
+            'project',
+            'downloadable',
+            'event'
+        ).get(pk=pk)
+    except Submission.DoesNotExist:
+        messages.error(request, 'Submission requirement not found.')
+        return redirect('submissions_admin')
+    
+    if request.method == "POST":
+        deadline = request.POST.get('deadline')
+        notes = request.POST.get('notes', '')
+        
+        if not deadline:
+            messages.error(request, 'Deadline is required.')
+            return render(request, 'submissions/edit_submission.html', {
+                'submission': submission,
+            })
+        
+        # Update only the allowed fields
+        submission.deadline = deadline
+        submission.notes = notes
+        submission.save()
+        
+        messages.success(request, f'Submission requirement for "{submission.project.title}" updated successfully.')
+        return redirect('submissions_admin')
+    
+    return render(request, 'submissions/edit_submission.html', {
+        'submission': submission,
+    })
+
+
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"], require_confirmed=True)
+def delete_submission(request, pk):
+    """Delete a submission requirement"""
+    from django.contrib import messages
+    from system.logs.models import LogEntry
+    from system.notifications.models import Notification
+    from system.users.models import User
+    
+    if request.method == "POST":
+        try:
+            submission = Submission.objects.select_related(
+                'project__project_leader__college', 
+                'downloadable',
+                'event'
+            ).prefetch_related('project__providers').get(pk=pk)
+            
+            project = submission.project
+            project_title = project.title
+            form_name = str(submission.downloadable.name_with_ext)
+            project_leader = project.project_leader
+            project_college = project_leader.college if project_leader else None
+            submission_type = submission.downloadable.submission_type
+            was_approved = submission.status == 'APPROVED'
+            
+            # Get all people involved for notifications
+            notification_recipients = []
+            if project_leader:
+                notification_recipients.append(project_leader)
+            notification_recipients.extend(list(project.providers.all()))
+            
+            # Also notify coordinator of the same college
+            if project_college:
+                coordinators = User.objects.filter(
+                    role='COORDINATOR',
+                    college=project_college,
+                    is_confirmed=True,
+                    is_active=True
+                )
+                notification_recipients.extend(coordinators)
+            
+            # Notify UESO, Director, VP
+            supervisors = User.objects.filter(
+                role__in=['UESO', 'DIRECTOR', 'VP'],
+                is_confirmed=True,
+                is_active=True
+            )
+            notification_recipients.extend(supervisors)
+            
+            # Remove duplicates
+            notification_recipients = list(set(notification_recipients))
+            
+            # REVERSE LOGIC: Handle project status changes when deleting APPROVED submissions
+            if was_approved:
+                if submission_type == 'event':
+                    # Decrease event_progress
+                    new_progress = max(0, project.event_progress - 1)
+                    project.event_progress = new_progress
+                    
+                    # If project was COMPLETED and progress is now less than estimated, revert to IN_PROGRESS
+                    if project.status == 'COMPLETED' and project.estimated_events > 0:
+                        if new_progress < project.estimated_events:
+                            # Check if there's still an approved final submission
+                            has_approved_final = Submission.objects.filter(
+                                project=project,
+                                downloadable__submission_type='final',
+                                status='APPROVED'
+                            ).exclude(pk=pk).exists()
+                            
+                            # Only revert if no final submission exists
+                            if not has_approved_final:
+                                project.status = 'IN_PROGRESS'
+                                project.save(update_fields=['event_progress', 'status'])
+                            else:
+                                project.save(update_fields=['event_progress'])
+                        else:
+                            project.save(update_fields=['event_progress'])
+                    else:
+                        project.save(update_fields=['event_progress'])
+                
+                elif submission_type == 'final':
+                    # Set has_final_submission to False
+                    project.has_final_submission = False
+                    
+                    # ALWAYS revert COMPLETED project to IN_PROGRESS when deleting final submission
+                    if project.status == 'COMPLETED':
+                        project.status = 'IN_PROGRESS'
+                        project.save(update_fields=['has_final_submission', 'status'])
+                    else:
+                        project.save(update_fields=['has_final_submission'])
+            
+            # Create log entry BEFORE deletion
+            log_entry = LogEntry.objects.create(
+                user=request.user,
+                action='DELETE',
+                model='Submission',
+                object_id=submission.id,
+                object_repr=f"{form_name} - {project_title}",
+                details=f"Submission requirement '{form_name}' for project '{project_title}' has been deleted by {request.user.get_full_name()}",
+                url='',  # No URL since the submission no longer exists
+                is_notification=False  # We'll create notifications manually
+            )
+            
+            # Create notifications manually for all involved users (except the actor)
+            notifications_to_create = [
+                Notification(
+                    recipient=recipient,
+                    actor=request.user,
+                    action='DELETE',
+                    model='Submission',
+                    object_id=submission.id,
+                    object_repr=f"{form_name} - {project_title}",
+                    details=f"Submission requirement '{form_name}' for project '{project_title}' has been deleted",
+                    url='',
+                )
+                for recipient in notification_recipients
+                if recipient != request.user  # Don't notify the person who deleted it
+            ]
+            
+            if notifications_to_create:
+                Notification.objects.bulk_create(notifications_to_create, batch_size=100)
+            
+            # If this submission is linked to an event, mark event as not having submission
+            if submission.event:
+                submission.event.has_submission = False
+                submission.event.save()
+            
+            # Delete the submission
+            submission.delete()
+            
+            messages.success(request, f'Submission requirement "{form_name}" for project "{project_title}" has been deleted.')
+            
+            # Redirect with toast parameters
+            from urllib.parse import quote
+            return redirect(f'/submissions/?success=true&action=deleted&title={quote(form_name)}')
+        except Submission.DoesNotExist:
+            messages.error(request, 'Submission requirement not found.')
+    
+    return redirect('submissions_admin')
+
+
+# Include this file just to be sure

@@ -2,15 +2,14 @@
 from .forms import AgendaForm
 from .models import Agenda
 from system.users.decorators import role_required
-from system.users.decorators import user_confirmed
-from django.http import HttpResponseRedirect
-from django.urls import reverse
+from django.shortcuts import render, redirect, get_object_or_404
+from django.views.decorators.http import require_POST
 from shared.projects.models import Project
+from urllib.parse import quote
 
 
 # Agenda View
-@user_confirmed
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+@role_required(allowed_roles=["VP", "DIRECTOR"], require_confirmed=True)
 def agenda_view(request):
     agendas = Agenda.objects.prefetch_related('concerned_colleges', 'projects').all()
     # Use the related_name 'projects' to get all projects for each agenda
@@ -22,14 +21,16 @@ def agenda_view(request):
 
 
 # Add Agenda View
-@user_confirmed
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+@role_required(allowed_roles=["VP", "DIRECTOR"], require_confirmed=True)
 def add_agenda_view(request):
     if request.method == 'POST':
         form = AgendaForm(request.POST)
         if form.is_valid():
-            form.save()
-            return render(request, 'agenda/add_agenda.html', {'form': AgendaForm(), 'success': True})
+            agenda = form.save(commit=False)
+            agenda.created_by = request.user
+            agenda.save()
+            form.save_m2m()
+            return redirect(f'/agenda/?success=true&action=created&name={quote(agenda.name)}')
     else:
         form = AgendaForm()
     return render(request, 'agenda/add_agenda.html', {'form': form})
@@ -37,8 +38,7 @@ from django.shortcuts import render
 
 
 # Edit Agenda View
-@user_confirmed
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+@role_required(allowed_roles=["VP", "DIRECTOR"], require_confirmed=True)
 def edit_agenda_view(request, agenda_id):
     try:
         agenda = Agenda.objects.get(id=agenda_id)
@@ -48,13 +48,12 @@ def edit_agenda_view(request, agenda_id):
     if request.method == 'POST':
         form = AgendaForm(request.POST, instance=agenda)
         if form.is_valid():
-            form.save()
+            agenda = form.save(commit=False)
+            agenda.updated_by = request.user
+            agenda.save()
+            form.save_m2m()
             selected_college_ids = [str(c.id) for c in form.cleaned_data['concerned_colleges']]
-            return render(request, 'agenda/edit_agenda.html', {
-                'form': form,
-                'success': True,
-                'selected_college_ids': selected_college_ids if selected_college_ids else [],
-            })
+            return redirect(f'/agenda/?success=true&action=updated&name={quote(agenda.name)}')
         else:
             selected_college_ids = request.POST.getlist('concerned_colleges')
     else:
@@ -68,9 +67,9 @@ def edit_agenda_view(request, agenda_id):
 
 
 # Delete Agenda View
-@user_confirmed
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+@role_required(allowed_roles=["VP", "DIRECTOR"], require_confirmed=True)
+@require_POST
 def delete_agenda_view(request, agenda_id):
-    agenda = Agenda.objects.get(id=agenda_id)
+    agenda = get_object_or_404(Agenda, id=agenda_id)
     agenda.delete()
-    return HttpResponseRedirect(reverse('agenda'))
+    return redirect(f'/agenda/?success=true&action=deleted&name={quote(agenda.name)}')

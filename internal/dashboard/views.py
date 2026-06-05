@@ -2,29 +2,127 @@ from django.shortcuts import render
 from shared.event_calendar.models import MeetingEvent
 from shared.projects.models import Project, ProjectEvent
 from system.users.decorators import role_required
-from system.users.decorators import user_confirmed
 from shared.request.models import ClientRequest
-from system.users.views import User
+from system.users.models import User
 from itertools import chain
+import json
 
-@user_confirmed
-@role_required(allowed_roles=["VP", "DIRECTOR", "UESO", "COORDINATOR", "DEAN", "PROGRAM_HEAD"])
+from shared.event_calendar import services 
+from django.http import JsonResponse
+from django.db.models import Count, Q
+from collections import OrderedDict
+from internal.goals.models import Goal 
+from internal.submissions.models import Submission
+from datetime import datetime, timedelta 
+from django.utils import timezone
+
+
+def number_to_words_mock(num):
+    if num == 100: return "ONE HUNDRED"
+    
+    words = [
+        "ZERO", "ONE", "TWO", "THREE", "FOUR", "FIVE",
+        "SIX", "SEVEN", "EIGHT", "NINE", "TEN",
+        "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN",
+        "SIXTEEN", "SEVENTEEN", "EIGHTEEN", "NINETEEN", "TWENTY"
+    ]
+    tens = ["", "", "TWENTY", "THIRTY", "FORTY", "FIFTY", "SIXTY", "SEVENTY", "EIGHTY", "NINETY"]
+
+    if num < 0 or num > 100: return str(num)
+    if num < 20: return words[num]
+
+    last_digit = num % 10
+    tens_digit = num // 10
+
+    return (tens[tens_digit] + (" " + words[last_digit] if last_digit != 0 else "")).strip()
+
+def _count_matching_projects(goal: Goal) -> int:
+    qs = Project.objects.all()
+    if goal.agenda_id:
+        qs = qs.filter(agenda_id=goal.agenda_id)
+    if goal.sdg_id:
+        qs = qs.filter(sdgs=goal.sdg_id)
+    if goal.project_status:
+        qs = qs.filter(status=goal.project_status)
+    return qs.count()
+
+@role_required(allowed_roles=["VP", "DIRECTOR", "UESO", "COORDINATOR", "DEAN", "PROGRAM_HEAD"], require_confirmed=True)
 def dashboard_view(request):
     user_role = getattr(request.user, 'role', None)
-    vpde_content = user_role in ["VP", "DIRECTOR"]
+    user_college = getattr(request.user, 'college', None)
+    
+    show_admin_content = user_role in ["VP", "DIRECTOR", "UESO"]
+    show_events_card = show_admin_content or user_role in ["COORDINATOR", "DEAN", "PROGRAM_HEAD"]
+    
+    # Notification counts for popup
+    notifications = {}
 
-    pending_requests = ClientRequest.objects.filter(status='PENDING')
+    forwarded_submissions_list = []
+    received_requests_list = []
+    unconfirmed_users_list = []
+    pending_exports_list = []
+    submitted_submissions_list = []
+
+    if user_role in ["VP", "DIRECTOR", "UESO"]:
+        from system.exports.models import ExportRequest
+        notifications['forwarded_submissions'] = Submission.objects.filter(status='FORWARDED').count()
+        notifications['received_requests'] = ClientRequest.objects.filter(status='RECEIVED').count()
+        notifications['unconfirmed_users'] = User.objects.filter(is_confirmed=False).count()
+        notifications['pending_exports'] = ExportRequest.objects.filter(status='PENDING').count()
+
+        forwarded_submissions_list = list(
+            Submission.objects.filter(status='FORWARDED')
+            .select_related('project', 'downloadable', 'submitted_by')
+            .order_by('-updated_at')[:10]
+        )
+        received_requests_list = list(
+            ClientRequest.objects.filter(status='RECEIVED')
+            .select_related('submitted_by')
+            .order_by('-updated_at')[:10]
+        )
+        unconfirmed_users_list = list(
+            User.objects.filter(is_confirmed=False)
+            .order_by('-created_at')[:10]
+        )
+        pending_exports_list = list(
+            ExportRequest.objects.filter(status='PENDING')
+            .select_related('submitted_by')
+            .order_by('-date_submitted')[:10]
+        )
+    elif user_role == "COORDINATOR":
+        if user_college:
+            # Get submissions for projects in coordinator's college
+            college_projects = Project.objects.filter(
+                Q(project_leader__college=user_college) |
+                Q(providers__college=user_college)
+            ).distinct()
+            notifications['submitted_submissions'] = Submission.objects.filter(
+                project__in=college_projects,
+                status='SUBMITTED'
+            ).count()
+
+            submitted_submissions_list = list(
+                Submission.objects.filter(
+                    project__in=college_projects,
+                    status='SUBMITTED',
+                )
+                .select_related('project', 'downloadable', 'submitted_by')
+                .order_by('-submitted_at', '-updated_at')[:10]
+            )
+        else:
+            notifications['submitted_submissions'] = 0
+
+    pending_requests = ClientRequest.objects.filter(status__in=['RECEIVED', 'UNDER_REVIEW'])
     inprogress_projects = Project.objects.filter(status='IN_PROGRESS')
     expert_users = User.objects.filter(is_expert=True)
 
-
-    all_events = list(chain(ProjectEvent.objects.all(), MeetingEvent.objects.all()))
-    events_in_calendar = len(all_events)
-    
+    pending_requests_list = []
+    inprogress_projects_list = []
+    expert_users_list = []
+    events_list = []
 
     projects = Project.objects.all().order_by('-updated_at')[:5]
 
-    # Agenda Distribution Calculation
     from internal.agenda.models import Agenda
     all_projects = Project.objects.all()
     agenda_counts = {}
@@ -32,16 +130,210 @@ def dashboard_view(request):
         count = all_projects.filter(agenda=agenda).count()
         if count > 0:
             agenda_counts[agenda.name] = count
+    
+    events_in_calendar = 0 
+    now = timezone.now()
+    
+    if show_events_card:
+        future_project_events = ProjectEvent.objects.filter(placeholder=False, datetime__gte=now)
+        future_meeting_events = MeetingEvent.objects.filter(datetime__gte=now)
+        
+        if show_admin_content:
+            all_events = list(chain(future_project_events, future_meeting_events))
+        elif user_college:
+            
+            relevant_projects = Project.objects.filter(
+                Q(project_leader__college=user_college) |
+                Q(providers__college=user_college)
+            ).distinct()
+            
+            filtered_project_events = future_project_events.filter(
+                project__in=relevant_projects
+            ).distinct()
+            
+            filtered_meeting_events = future_meeting_events.filter(
+                participants__college=user_college
+            ).distinct()
+            
+            all_events = list(chain(filtered_project_events, filtered_meeting_events))
+        else:
+            all_events = []
+            
+        events_in_calendar = len(all_events)
+
+        try:
+            events_list = sorted(all_events, key=lambda e: e.datetime)[:10]
+        except Exception:
+            events_list = []
+    
+    goal_objects = Goal.objects.all() 
+    
+    dashboard_goals = []
+    
+    for goal in goal_objects:
+        
+        target_value = getattr(goal, 'target_value', 1)
+        display_target = target_value if target_value > 0 else 10 
+        
+        current_count = _count_matching_projects(goal)
+        
+        progress = round((current_count / target_value) * 100) if target_value and target_value > 0 else 0
+        progress = min(progress, 100)
+
+        current_qualifiers = min(current_count, display_target)
+
+        dashboard_goals.append({
+            'id': goal.id,
+            'title': goal.title,
+            'progress': progress,
+            'current_qualifiers': current_qualifiers,
+            'target_qualifiers': display_target,
+            'target_words': number_to_words_mock(display_target).upper()
+        })
+    
+    dashboard_goals.sort(key=lambda g: (g['progress'] >= 100, -g['progress']))
+           
+    events_by_date = services.get_events_by_date(request.user, for_main_calendar_view=False)
+    events_json = json.dumps(events_by_date)
+
+    from django.contrib.messages import get_messages
+    storage = get_messages(request)
+    show_notifications = any(str(msg) == "SHOW_REMINDERS" for msg in storage)
+    
+    # Ensure all variables are present for the template
+    pending_requests = pending_requests if 'pending_requests' in locals() else []
+    inprogress_projects = inprogress_projects if 'inprogress_projects' in locals() else []
+    expert_users = expert_users if 'expert_users' in locals() else []
+    pending_requests_list = list(
+        pending_requests.select_related('submitted_by').order_by('-updated_at')[:10]
+    ) if hasattr(pending_requests, 'select_related') else []
+    inprogress_projects_list = list(
+        inprogress_projects.select_related('project_leader').order_by('-updated_at')[:10]
+    ) if hasattr(inprogress_projects, 'select_related') else []
+    expert_users_list = list(
+        expert_users.order_by('-updated_at')[:10]
+    ) if hasattr(expert_users, 'order_by') else []
+    events_list = events_list if 'events_list' in locals() else []
+    events_in_calendar = events_in_calendar if 'events_in_calendar' in locals() else 0
+    projects = projects if 'projects' in locals() else []
+    agenda_counts = agenda_counts if 'agenda_counts' in locals() else {}
+    events_json = events_json if 'events_json' in locals() else '{}'
+    dashboard_goals = dashboard_goals if 'dashboard_goals' in locals() else []
+    show_events_card = show_events_card if 'show_events_card' in locals() else False
+    notifications = notifications if 'notifications' in locals() else {}
+    forwarded_submissions_list = forwarded_submissions_list if 'forwarded_submissions_list' in locals() else []
+    received_requests_list = received_requests_list if 'received_requests_list' in locals() else []
+    unconfirmed_users_list = unconfirmed_users_list if 'unconfirmed_users_list' in locals() else []
+    pending_exports_list = pending_exports_list if 'pending_exports_list' in locals() else []
+    submitted_submissions_list = submitted_submissions_list if 'submitted_submissions_list' in locals() else []
+    for key in ['forwarded_submissions', 'received_requests', 'unconfirmed_users', 'pending_exports', 'submitted_submissions']:
+        if key not in notifications:
+            notifications[key] = 0
+    show_notifications = show_notifications if 'show_notifications' in locals() else False
+    user_role = user_role if 'user_role' in locals() else None
+    show_admin_content = show_admin_content if 'show_admin_content' in locals() else False
 
     context = {
         'user_role': user_role,
-        'vpde_content': vpde_content,
+        'vpde_content': show_admin_content,
         'pending_requests': pending_requests,
         'inprogress_projects': inprogress_projects,
         'expert_users': expert_users,
+        'pending_requests_list': pending_requests_list,
+        'inprogress_projects_list': inprogress_projects_list,
+        'expert_users_list': expert_users_list,
+        'events_list': events_list,
         'events_in_calendar': events_in_calendar,
         'projects': projects,
         'agenda_distribution': agenda_counts,
+        'events_json': events_json,
+        'dashboard_goals': dashboard_goals,
+        'show_events_card': show_events_card,
+        'notifications': notifications,
+        'show_notifications': show_notifications,
+        'forwarded_submissions_list': forwarded_submissions_list,
+        'received_requests_list': received_requests_list,
+        'unconfirmed_users_list': unconfirmed_users_list,
+        'pending_exports_list': pending_exports_list,
+        'submitted_submissions_list': submitted_submissions_list,
     }
 
     return render(request, 'dashboard/dashboard.html', context)
+    
+@role_required(allowed_roles=["VP", "DIRECTOR", "UESO", "COORDINATOR", "DEAN", "PROGRAM_HEAD"], require_confirmed=True)
+def get_submission_status_data(request):
+    
+    start_str = request.GET.get('start')
+    end_str = request.GET.get('end')
+    
+    current_tz = timezone.get_current_timezone()
+
+    if not end_str:
+        end_date = timezone.now().replace(hour=23, minute=59, second=59)
+    else:
+        dt = datetime.strptime(end_str, '%Y-%m-%d')
+        end_date = timezone.make_aware(dt.replace(hour=23, minute=59, second=59), current_tz)
+        
+    if not start_str:
+        start_date = (end_date - timedelta(days=300)).replace(hour=0, minute=0, second=0)
+    else:
+        dt = datetime.strptime(start_str, '%Y-%m-%d')
+        start_date = timezone.make_aware(dt.replace(hour=0, minute=0, second=0), current_tz)
+
+    status_data = Submission.objects.filter(
+        created_at__range=(start_date, end_date)
+    ).values('status').annotate(count=Count('status')).order_by('status')
+    
+    status_choices = dict(Submission.SUBMISSION_STATUS_CHOICES)
+    data_dict = OrderedDict((key, 0) for key, label in Submission.SUBMISSION_STATUS_CHOICES)
+    
+    for item in status_data:
+        if item['status'] in data_dict:
+            data_dict[item['status']] = item['count']
+            
+    labels = [status_choices.get(key, key) for key in data_dict.keys()]
+    counts = list(data_dict.values())
+    
+    return JsonResponse({
+        'labels': labels,
+        'counts': counts,
+    })
+
+@role_required(allowed_roles=["VP", "DIRECTOR", "UESO", "COORDINATOR", "DEAN", "PROGRAM_HEAD"], require_confirmed=True)
+def get_project_status_data(request):
+    
+    start_str = request.GET.get('start')
+    end_str = request.GET.get('end')
+
+    current_tz = timezone.get_current_timezone()
+
+    if not end_str:
+        end_date = timezone.now().replace(hour=23, minute=59, second=59)
+    else:
+        dt = datetime.strptime(end_str, '%Y-%m-%d')
+        end_date = timezone.make_aware(dt.replace(hour=23, minute=59, second=59), current_tz)
+        
+    if not start_str:
+        start_date = (end_date - timedelta(days=300)).replace(hour=0, minute=0, second=0)
+    else:
+        dt = datetime.strptime(start_str, '%Y-%m-%d')
+        start_date = timezone.make_aware(dt.replace(hour=0, minute=0, second=0), current_tz)
+
+    status_data = Project.objects.filter(
+        created_at__range=(start_date, end_date)
+    ).values('status').annotate(count=Count('status')).order_by('status')
+    
+    status_choices = dict(Project.STATUS_CHOICES)
+    data_dict = OrderedDict((key, 0) for key, label in Project.STATUS_CHOICES)
+    
+    for item in status_data:
+        if item['status'] in data_dict:
+            data_dict[item['status']] = item['count']
+            
+    labels = [status_choices.get(key, key) for key in data_dict.keys()]
+    counts = list(data_dict.values())
+    
+    return JsonResponse({
+        'labels': labels,
+        'counts': counts,
+    })

@@ -7,7 +7,7 @@ from django.urls import reverse
 from .models import RequestUpdate
 
 
-@role_required(allowed_roles=["UESO", "VP", "DIRECTOR", "CLIENT"])
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR", "CLIENT"], require_confirmed=True)
 def request_dispatcher(request):
     if request.user.role == 'CLIENT':
         return request_client_view(request)
@@ -16,12 +16,23 @@ def request_dispatcher(request):
 
 
 
-@role_required(allowed_roles=["UESO", "VP", "DIRECTOR", "CLIENT"])
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR", "CLIENT"], require_confirmed=True)
 def request_details_dispatcher(request, pk):
     # Only allow the submitter or privileged roles to view
     req = get_object_or_404(ClientRequest, pk=pk)
 
-    updates_qs = RequestUpdate.objects.filter(user=request.user).order_by('-updated_at')[:10]
+    # Intentional Behavior: When an admin views a RECEIVED request,
+    # Transition it to UNDER_REVIEW.
+    if request.user.role in ['UESO', 'VP', 'DIRECTOR'] and req.status == 'RECEIVED':
+        req.status = 'UNDER_REVIEW'
+        req.reviewed_by = request.user
+        req.review_at = timezone.now()
+        req.updated_by = request.user
+        req.updated_at = timezone.now()
+        req.save()
+
+    # Optimize with select_related
+    updates_qs = RequestUpdate.objects.filter(user=request.user).select_related('request').order_by('-updated_at')[:10]
     updates = []
     for update in updates_qs:
         status_text = {
@@ -61,10 +72,10 @@ def request_details_dispatcher(request, pk):
 
 
 
-@role_required(allowed_roles=["CLIENT"])
+@role_required(allowed_roles=["CLIENT"], require_confirmed=True)
 def request_client_view(request):
-    # Get recent status updates for this user's requests
-    updates_qs = RequestUpdate.objects.filter(user=request.user).order_by('-updated_at')[:10]
+    # Get recent status updates for this user's requests - optimize with select_related
+    updates_qs = RequestUpdate.objects.filter(user=request.user).select_related('request').order_by('-updated_at')[:10]
     updates = []
     for update in updates_qs:
         # Build message text
@@ -85,7 +96,12 @@ def request_client_view(request):
         })
 
     from urllib.parse import urlencode
-    requests = ClientRequest.objects.filter(submitted_by=request.user)
+    # Optimize with select_related
+    requests = ClientRequest.objects.filter(submitted_by=request.user).select_related(
+        'submitted_by',
+        'reviewed_by',
+        'endorsed_by'
+    )
     query_params = {}
 
     # Filters
@@ -97,11 +113,16 @@ def request_client_view(request):
     if status:
         requests = requests.filter(status__iexact=status)
         query_params['status'] = status
-    date = request.GET.get('date', '')
-    if date:
-        requests = requests.filter(submitted_at__date=date) | requests.filter(updated_at__date=date)
+    date_from = request.GET.get('date_from', '')
+    if date_from:
+        requests = requests.filter(submitted_at__date__gte=date_from) | requests.filter(updated_at__date__gte=date_from)
         requests = requests.distinct()
-        query_params['date'] = date
+        query_params['date_from'] = date_from
+    date_to = request.GET.get('date_to', '')
+    if date_to:
+        requests = requests.filter(submitted_at__date__lte=date_to) | requests.filter(updated_at__date__lte=date_to)
+        requests = requests.distinct()
+        query_params['date_to'] = date_to
     search = request.GET.get('search', '').strip()
     if search:
         requests = requests.filter(title__icontains=search)
@@ -140,13 +161,18 @@ def request_client_view(request):
     else:
         page_range = range(current - 2, current + 3)
 
+    # Get all possible status choices
+    status_choices = ClientRequest._meta.get_field('status').choices
+
     return render(request, 'request/request_client.html', {
         'requests': page_obj.object_list,
         'search': search,
         'sort_by': sort_by,
         'order': order,
+        'status_choices': status_choices,
         'status': status,
-        'date': date,
+        'date_from': date_from,
+        'date_to': date_to,
         'paginator': paginator,
         'page_number': page_number,
         'page_obj': page_obj,
@@ -157,7 +183,7 @@ def request_client_view(request):
 
 
 
-@role_required(allowed_roles=["CLIENT"])
+@role_required(allowed_roles=["CLIENT"], require_confirmed=True)
 def submit_request(request):
     if request.method == 'POST':
         title = request.POST.get('title')
@@ -180,7 +206,8 @@ def submit_request(request):
         )
         new_request.save()
 
-        return redirect('request_dispatcher')
+        from urllib.parse import quote
+        return redirect(f'/requests/?success=true&action=submitted&title={quote(title)}')
     else:
         return redirect('request_dispatcher')
 
@@ -189,14 +216,19 @@ def submit_request(request):
 
 
 
-@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"])
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"], require_confirmed=True)
 def request_admin_view(request):
     from urllib.parse import urlencode
-    requests = ClientRequest.objects.all()
+    # Optimize with select_related
+    requests = ClientRequest.objects.select_related(
+        'submitted_by',
+        'reviewed_by',
+        'endorsed_by'
+    ).all()
     query_params = {}
 
     # Filters
-    sort_by = request.GET.get('sort_by', 'updated_at')
+    sort_by = request.GET.get('sort_by', 'submitted_at')
     query_params['sort_by'] = sort_by
     order = request.GET.get('order', 'desc')
     query_params['order'] = order
@@ -204,10 +236,16 @@ def request_admin_view(request):
     if status:
         requests = requests.filter(status__iexact=status)
         query_params['status'] = status
-    date = request.GET.get('date', '')
-    if date:
-        requests = requests.filter(deadline__date=date)
-        query_params['date'] = date
+    date_from = request.GET.get('date_from', '')
+    if date_from:
+        requests = requests.filter(submitted_at__date__gte=date_from) | requests.filter(updated_at__date__gte=date_from)
+        requests = requests.distinct()
+        query_params['date_from'] = date_from
+    date_to = request.GET.get('date_to', '')
+    if date_to:
+        requests = requests.filter(submitted_at__date__lte=date_to) | requests.filter(updated_at__date__lte=date_to)
+        requests = requests.distinct()
+        query_params['date_to'] = date_to
     search = request.GET.get('search', '').strip()
     if search:
         requests = requests.filter(title__icontains=search)
@@ -215,20 +253,23 @@ def request_admin_view(request):
 
     requests = requests.distinct()
 
-    # Sorting
-    sort_map = {
-        'updated_at': 'updated_at',
-        'submitted_at': 'submitted_at',
-        'status': 'status',
-        'title': 'title',
-    }
-    if sort_by:
-        sort_field = sort_map.get(sort_by, 'updated_at')
-        if order == 'desc':
-            sort_field = '-' + sort_field
-        requests = requests.order_by(sort_field, '-updated_at', '-submitted_at')
-    else:
-        requests = requests.order_by('-updated_at', '-submitted_at')
+    # Custom status order: Under Review, Received, Approved, Rejected, Endorsed, Denied
+    from django.db.models import Case, When, IntegerField
+    status_order = [
+        'UNDER_REVIEW',
+        'RECEIVED',
+        'APPROVED',
+        'REJECTED',
+        'ENDORSED',
+        'DENIED',
+    ]
+    status_priority = Case(
+        *[When(status=code, then=pos) for pos, code in enumerate(status_order)],
+        default=len(status_order),
+        output_field=IntegerField()
+    )
+    requests = requests.annotate(status_priority=status_priority)
+    requests = requests.order_by('status_priority', '-submitted_at')
 
     querystring = urlencode(query_params)
 
@@ -248,13 +289,27 @@ def request_admin_view(request):
     else:
         page_range = range(current - 2, current + 3)
 
+    # Custom status order: Under Review, Received, Approved, Rejected, Endorsed, Denied
+    status_order = [
+        'UNDER_REVIEW',
+        'RECEIVED',
+        'APPROVED',
+        'REJECTED',
+        'ENDORSED',
+        'DENIED',
+    ]
+    all_status_choices = dict(ClientRequest._meta.get_field('status').choices)
+    status_choices = [(code, all_status_choices[code]) for code in status_order if code in all_status_choices]
+
     return render(request, 'request/request_admin.html', {
         'requests': page_obj.object_list,
         'search': search,
         'sort_by': sort_by,
         'order': order,
+        'status_choices': status_choices,
         'status': status,
-        'date': date,
+        'date_from': date_from,
+        'date_to': date_to,
         'paginator': paginator,
         'page_number': page_number,
         'page_obj': page_obj,
@@ -265,9 +320,10 @@ def request_admin_view(request):
 
 # APPROVE/REJECT/ENDORSE
 
-@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"])
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"], require_confirmed=True)
 def admin_request_action(request, pk):
-    req = get_object_or_404(ClientRequest, pk=pk)
+    # Optimize with select_related
+    req = get_object_or_404(ClientRequest.objects.select_related('submitted_by', 'reviewed_by', 'endorsed_by'), pk=pk)
     from django.utils import timezone
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -287,13 +343,22 @@ def admin_request_action(request, pk):
                 req.updated_by = request.user
                 req.reason = request.POST.get('reason', '')
                 req.save()
-        elif req.status == 'APPROVED' and action == 'endorse':
-            req.status = 'ENDORSED'
-            req.endorsed_by = request.user
-            req.endorsed_at = timezone.now()
-            req.updated_at = timezone.now()
-            req.updated_by = request.user
-            req.save()
+        elif req.status == 'APPROVED':
+            if action == 'endorse':
+                req.status = 'ENDORSED'
+                req.endorsed_by = request.user
+                req.endorsed_at = timezone.now()
+                req.updated_at = timezone.now()
+                req.updated_by = request.user
+                req.save()
+            elif action == 'deny':
+                req.status = 'DENIED'
+                req.endorsed_by = request.user
+                req.endorsed_at = timezone.now()
+                req.updated_at = timezone.now()
+                req.updated_by = request.user
+                req.reason = request.POST.get('reason', '')
+                req.save()
             
         # Create or update RequestUpdate for the submitter
         if req.submitted_by:
@@ -306,17 +371,25 @@ def admin_request_action(request, pk):
                     'updated_at': req.updated_at,
                 }
             )
+        
+        # Redirect with toast notification
+        from urllib.parse import quote
+        action_text = action.lower() if action else 'updated'
+        return redirect(f'/requests/?success=true&action={action_text}&title={quote(req.title)}')
+    
     return redirect('request_details_dispatcher', pk=pk)
 
 
 
-@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"])
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"], require_confirmed=True)
 def admin_request_details_entry(request, pk):
-    req = get_object_or_404(ClientRequest, pk=pk)
+    # Optimize with select_related
+    req = get_object_or_404(ClientRequest.objects.select_related('submitted_by', 'reviewed_by'), pk=pk)
     if req.status == 'RECEIVED':
         req.status = 'UNDER_REVIEW'
         req.reviewed_by = request.user
         req.review_at = timezone.now()
         req.updated_by = request.user
+        req.updated_at = timezone.now()
         req.save()
     return redirect('request_details_dispatcher', pk=pk)

@@ -1,802 +1,586 @@
-{% extends base_template %}
-{% block content %}
+{% extends 'base_public.html' %}
+{% load humanize static %}
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Budget</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.css' rel='stylesheet'/>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link href="https://cdn.jsdelivr.net/npm/remixicon/fonts/remixicon.css" rel="stylesheet">
-  <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.js'></script>
-  <style>
-    body {
-      font-family: Helvetica, Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      min-height: 100vh;
-      background-color: #eaeaea;
-    }
-    header {
-      background-color: #245F3E;
-      height: 4rem;
-      display: flex;
-      align-items: center;
-      padding: 0 1rem;
-      color: white;
-    }
-    main {
-      display: flex;
-      flex-direction: column;
-      margin: 2rem 5rem;
-      gap: 1.5rem;
-    }
-    footer {
-      background-color: #245F3E;
-      height: 6rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-    }
-    section {
-      display: flex;
-      flex-direction: row;
-      gap: 1.5rem;
-    }
-    section > div {
-      background-color: white;
-      border-radius: 1rem;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-      padding: 1.5rem 2.5rem;
-    }
-    .list {
-      flex: 2;
-      min-height: 20rem;
-    }
-    .logs {
-      flex: 1;
-      min-height: 20rem;
-      overflow-y: auto;
-      position: relative;
-      padding: 0;
-    }
-    .summary {
-      display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
-      width: 100%;
-    }
-    .college-budget, .history {
-      flex: 1;
-      display: flex;
-      flex-direction: row;
-    }
-    h2 {
-      font-size: 1.75rem;
-      font-weight: 500;
-    }
-    .files-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        height: 4rem;
-        padding: 1rem 2rem;
-    }
-    .dropdown2 {
-        position: relative;
-        width: 9.5rem;
-    }
-    .dropdown-btn2 { 
-        margin: 0.75rem; 
-        border: none;
-        width: 100%;
-        padding: 0.5rem;
-        border-radius: 0.75rem;
-        background: none;
-        text-align: center;
-        cursor: pointer;
-        font-family: Helvetica, Arial, sans-serif;
-        font-weight: 400;
-        font-size: 1rem; 
-    } 
-    .dropdown-btn2:hover {
-        border: 0.08rem solid #000000;
-    }
-    .dropdown-menu2 {
-        position: absolute;
-        top: calc(100% - 0.7rem);
-        left: 0.8rem;
-        margin: 0;
-        right: 0; 
-        width: 100%;
-        background: white;
-        border: 0.08rem solid #ccc;
-        border-radius: 0.75rem; 
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        z-index: 10;
-        overflow: hidden;
-    }
-    .dropdown-item2 {
-        padding: 0.75rem;
-        cursor: pointer;
-        transition: background 0.2s;
-        font-family: Helvetica, Arial, sans-serif;
-        font-weight: 400;
-        text-align: center;
-        border-bottom: 1px solid rgb(196, 196, 196);
-    }
-    .dropdown-item2:hover {
-        background-color: #000000;
-        color: white;
-    } 
-    .sort-btn {
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: 1rem;
-        color: #333;
-        margin-left: 0.5rem;
-    }
-    .hidden {
-      display: none;
-    }
-    .view-btn {
-      width: 3rem;
-      height: 3rem;
-      border: 0.08rem solid white;
-      border-radius: 0.75rem;
-      background: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-size: 1.2rem;
-      color: #333;
-      transition: all 0.2s ease-in-out;
-    }
-    .view-btn:hover {
-      background: black;
-      color: white;
-      border-color: black;
-    }
-    .view-btn.active {
-      background: black;
-      color: white;
-      border-color: black;
-    }
-    .files-header > div {
-      display: flex;
-      align-items: center; 
-    }
-    .files-header h2 {
-      margin: 0;       
-      line-height: 1;   
-    }
-    .card-holder {
-      display: grid;
-      grid-template-columns: repeat(2, auto);
-      gap: 2rem;            
-      justify-content: center;      
-      padding: 1.5rem;                  
-      box-sizing: border-box;
-    }
-    .card {
-      width: 100%;
-      max-width: 17.5rem;
-      height: 16rem;
-      background-color: #E6F2FB;
-      border-radius: 2rem;
-      padding: 0.5rem 1.5rem;
-    }
-    .card p {
-      font-size: 0.75rem;
-    }
-    .project-authors {
-      display: flex; 
-      flex-direction: row; 
-      align-items: center;
-      gap: 0.5rem;
-      margin: 1rem 0 2rem 0; 
-      position: relative;
-    } 
-    .project-authors content {
-      display: flex; 
-      flex-direction: row; 
-      align-items: center; 
-      gap: 0.75rem;
-    }
-    .project-authors img {
-      width: 2.5rem;
-      height: 2.5rem;
-      border-radius: 50%;
-      object-fit: cover; 
-      border: 0.08rem solid #ccc;
-    } 
-    .project-title {
-        display: -webkit-box;
-        -webkit-line-clamp: 3;
-        line-clamp: 3;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        height: 4.2rem; 
-    }
-    .progress { 
-        width: 100%;
-        height: 0.25rem;
-        background-color: #385682;
-        border-radius: 10px;
-        overflow: hidden;
-        margin-top: 1rem;
-    }
-    .progress-bar {
-        height: 100%;
-        width: 0%; 
-        background: #30CE76;
-        transition: width 0.5s ease;
-    }
-    .card .status-text {
-      margin: 0.25rem 0 0 0;
-      font-size: 0.85rem;
-      text-align: center;
-      color: #385682;
-      font-weight: 600;
-    }
-    .logs-list {
-      display: flex;
-      flex-direction: column; 
-      background-color: #F2F1F1;
-      width: 100%;
-      margin: 0;
-      padding: 0;
-      background-color: #F2F1F1;
-      width: 100%;
-    }
-    .log-item {
-      background: transparent;        
-      border-top: 1px solid rgb(196, 196, 196);
-      border-bottom: 1px solid rgb(196, 196, 196);
-      font-size: 0.95rem;
-      line-height: 1.4;
-      padding: 1rem 2rem;
-    }
-    .log-item strong {
-      font-weight: 600;
-      color: #000;
-    }
-    .log-item a {
-      color: #007bff;
-      text-decoration: none;
-    }
-    .log-item a:hover {
-      text-decoration: underline;
-    }
-    .log-time {
-      font-size: 0.75rem;
-      color: gray;
-      margin-top: 0.5rem;
-      display: block;
-    }
-    .expand-btn {
-      position: static;
-      margin-left: auto;
-      top: 1rem;
-      right: 1rem;
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 1.3rem; 
-      color: #090909;
-      transition: color 0.2s;
-      z-index: 100;
-    }
-    .expand-btn:hover {
-      color: #37d4ff;
-    }
-    .expand-rev {
-      position: absolute;
-      bottom: 1rem;
-      right: 1rem;
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 1.3rem; 
-      color: #090909;
-      transition: color 0.2s;
-      z-index: 100;
-    }
-    .expand-rev:hover {
-      color: #37d4ff;
-    }
-    .budget-box {
-      border-radius: 1rem;
-      padding: 1.5rem;
-      text-align: left;  
-      font-family: Helvetica, Arial, sans-serif;
-    }
-    .budget-text {
-      font-size: 1rem;
-      margin: 0 0 1rem 0;
-      color: #111;
-    }
-    .budget-percentage {
-      font-size: 3rem;
-      font-weight: 700;
-      margin: 0.5rem 0;
-      background: linear-gradient(90deg, #a68f2d, #3ea047);
-      background-clip: text;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .budget-note {
-      font-size: 1rem;
-      margin: 0;
-      color: #111;
-    }
-    .list-holder {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-      padding: 1.5rem;
-    }
-    .project-table td.provider-cell {
-          border-bottom: none;
-        }
-    .project-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.95rem;
-        border-radius: 1rem;
-        overflow: hidden;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        display: none;
-    }
-    .project-table thead {
-        background-color: #f4f4f4;
-        font-weight: 600;
-    }
-    .project-table th, .project-table td {
-        padding: 1.25rem 1rem;
-        text-align: left;
-        border-bottom: 1px solid #ddd;
-        vertical-align: middle;
-    }
-    .project-table .provider-cell {
-        display: flex;
-        align-items: center;
-        gap: 0.25rem;
-        height: 2.5rem;       
-    }
-    .plus-indicator {
-        display: inline-flex;
-        align-items: center;
-        height: 2.5rem;
-        padding: 0 0.75rem;
-        background: #f0f0f0;
-        border-radius: 1.25rem;
-        color: #666;
-        font-size: 0.9rem;
-        font-weight: 500;
-    }
-    .list-holder.hidden .project-table {
-        display: none;
-    }
-    .list-holder:not(.hidden) .project-table {
-        display: table;
-    }
-    .project-table td img {
-        width: 2.5rem;          
-        height: 2.5rem;     
-        border-radius: 50%;
-        object-fit: cover;
-        border: 0.08rem solid #ccc;
-        display: inline-block;
-        vertical-align: middle;
-    }
-  </style>
-</head>
-<body> 
-  <svg style="display: none;">
-      <!-- ascdesc -->
-      <symbol id="ascdesc" viewBox="0 0 640 640" fill="black">
-        <path d="M342.6 81.4C330.1 68.9 309.8 68.9 297.3 81.4L137.3 241.4C124.8 253.9 124.8 274.2 137.3 286.7C149.8 299.2 170.1 299.2 182.6 286.7L288 181.3L288 552C288 569.7 302.3 584 320 584C337.7 584 352 569.7 352 552L352 181.3L457.4 286.7C469.9 299.2 490.2 299.2 502.7 286.7C515.2 274.2 515.2 253.9 502.7 241.4L342.7 81.4z"/> 
-      </symbol> 
-      <!-- expand -->
-      <symbol id="expand" viewBox="0 0 640 640" fill="currentColor">
-        <path d="M408 64L552 64C565.3 64 576 74.7 576 88L576 232C576 241.7 570.2 250.5 561.2 254.2C552.2 257.9 541.9 255.9 535 249L496 210L409 297C399.6 306.4 384.4 306.4 375.1 297L343.1 265C333.7 255.6 333.7 240.4 343.1 231.1L430.1 144.1L391.1 105.1C384.2 98.2 382.2 87.9 385.9 78.9C389.6 69.9 398.3 64 408 64zM232 576L88 576C74.7 576 64 565.3 64 552L64 408C64 398.3 69.8 389.5 78.8 385.8C87.8 382.1 98.1 384.2 105 391L144 430L231 343C240.4 333.6 255.6 333.6 264.9 343L296.9 375C306.3 384.4 306.3 399.6 296.9 408.9L209.9 495.9L248.9 534.9C255.8 541.8 257.8 552.1 254.1 561.1C250.4 570.1 241.7 576 232 576z"/>
-      </symbol> 
-      <!-- list -->
-      <symbol id="list" viewBox="0 0 640 640" fill="currentColor">
-        <path d="M112 208C138.5 208 160 186.5 160 160C160 133.5 138.5 112 112 112C85.5 112 64 133.5 64 160C64 186.5 85.5 208 112 208zM256 128C238.3 128 224 142.3 224 160C224 177.7 238.3 192 256 192L544 192C561.7 192 576 177.7 576 160C576 142.3 561.7 128 544 128L256 128zM256 288C238.3 288 224 302.3 224 320C224 337.7 238.3 352 256 352L544 352C561.7 352 576 337.7 576 320C576 302.3 561.7 288 544 288L256 288zM256 448C238.3 448 224 462.3 224 480C224 497.7 238.3 512 256 512L544 512C561.7 512 576 497.7 576 480C576 462.3 561.7 448 544 448L256 448zM112 528C138.5 528 160 506.5 160 480C160 453.5 138.5 432 112 432C85.5 432 64 453.5 64 480C64 506.5 85.5 528 112 528zM160 320C160 293.5 138.5 272 112 272C85.5 272 64 293.5 64 320C64 346.5 85.5 368 112 368C138.5 368 160 346.5 160 320z"/>
-      </symbol> 
-      <!-- card -->
-      <symbol id="card" viewBox="0 0 640 640" fill="currentColor">
-        <path d="M480 160L352 160L352 288L480 288L480 160zM544 288L544 480C544 515.3 515.3 544 480 544L160 544C124.7 544 96 515.3 96 480L96 160C96 124.7 124.7 96 160 96L480 96C515.3 96 544 124.7 544 160L544 288zM160 352L160 480L288 480L288 352L160 352zM288 288L288 160L160 160L160 288L288 288zM352 352L352 480L480 480L480 352L352 352z"/>
-      </symbol>
-  </svg>  
-  <header>
-    <h1>Budget Dashboard</h1>
-  </header>
-  <main>
-    <section>
-      <div class="list">
-        <div class="files-header">
-          <h2>Projects</h2>
-          <div style="display: flex; gap: 0.7rem;">
-            <svg width="20" height="20" style="fill: currentColor;">
-                <use href="#ascdesc"/>
-            </svg>
-            <div class="dropdown2">
-              <button class="dropdown-btn2">Sort by ▾</button>
-                <div class="dropdown-menu2 hidden">
-                    <div class="dropdown-item2">Name</div>
-                    <div class="dropdown-item2">Date Completed</div>
-                    <div class="dropdown-item2">Last Updated</div>
-                    <div class="dropdown-item2">Q4</div>
+{% block content %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link href="https://cdn.jsdelivr.net/npm/remixicon/fonts/remixicon.css" rel="stylesheet">
+<link href="{% static 'shared/projects/u_module_styles.css' %}" rel="stylesheet">
+<link href="{% static 'shared/projects/gridnlist.css' %}" rel="stylesheet">
+<title>Budget</title>
+
+<body>
+    <div data-dashboard="1" class="main" style="flex-direction:column;">
+
+        <div style="display: flex; flex-direction: column;">
+            
+            <div class="dashboard-top-grid">
+
+                <div class="list limit">
+                    <h2 class="headerr">Recent Expense Logs</h2>
+                    <div class="logs-div">
+                        {% if recent_expenses %}
+                        {% for e in recent_expenses %}
+                        <div class="log-item-row">
+                            <div class="log-content">
+                                <span class="log-amount-main">₱{{ e.amount|floatformat:2|intcomma }} accounted for
+                                <a href="{% url 'project_expenses' e.project_id %}" class="log-project">{{ e.project.title }}</a></span>
+                                <span class="log-creator">Recorded by: {{ e.created_by.get_full_name }}</span>
+                            </div>
+                            <div class="log-amount-date">
+                                <span class="log-timestamp">{{ e.submitted_at|date:"F d, Y" }}</span>
+                                <span class="log-timestamp">{{ e.submitted_at|date:"h:i A" }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="log-item-row">No expense logs yet.</div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                {# LEFT div: PROJECT LIST (Corresponds to .list in faculty_project.html) #}
+                <div class="list kinkk"> 
+                    <div class="box" style="box-shadow:none; padding: 0;">
+                        <div class="search-container">
+                            <form class="search-bar" method="get" action="">
+                                <svg width="16" height="16"> <use href="#icon-search"></use> </svg>
+                                <input type="text" name="search" placeholder="Search Project Title" value="{{ request.GET.search|default:'' }}" class="flex-1"/>
+                                <button type="button" id="filterBtn" class="mr-1">
+                                    <svg width="16" height="16"> <use href="#icon-filter"></use> </svg>
+                                </button>
+                                
+                                <div id="filterDropdown" class="filter-dropdown" style="display:none;">
+                                    <div class="filter-grid" style="grid-template-columns:none">
+                                        <label class="font-medium text-gray-700 flex flex-col">
+                                            Sort By
+                                            <select name="sort_by" class="mt-2">
+                                                <option value="title" {% if request.GET.sort_by == 'title' %}selected{% endif %}>Title</option>
+                                                <option value="last_updated" {% if request.GET.sort_by == 'last_updated' %}selected{% endif %}>Last Updated</option>
+                                                <option value="budget_remaining" {% if request.GET.sort_by == 'budget_remaining' %}selected{% endif %}>Budget Remaining (Amount)</option>
+                                                <option value="budget_percentage" {% if request.GET.sort_by == 'budget_percentage' %}selected{% endif %}>Budget Remaining (%)</option>
+                                            </select>
+                                        </label>
+                                        <label class="font-medium text-gray-700 flex flex-col">
+                                            Order
+                                            <select name="order" class="mt-2">
+                                                <option value="desc" {% if request.GET.order == 'desc' %}selected{% endif %}>Descending</option>
+                                                <option value="asc" {% if request.GET.order == 'asc' %}selected{% endif %}>Ascending</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <div class="filter-actions">
+                                        <button type="submit" class="filter-apply">Apply</button>
+                                        <button type="button" id="closeFilter" class="filter-close">Clear Filters</button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="files-header">
+                            <h2>Project Budget</h2>
+                            <div class="flex gap-2">
+                                <button id="cardViewBtn" class="view-toggle-btn active"><i class="ri-apps-2-line"></i></button>
+                                <button id="listViewBtn" class="view-toggle-btn inactive"><i class="ri-list-unordered"></i></button>
+                            </div>
+                        </div>
+                        {% if projects_overview %}
+                        <div id="projectsCardView" class="projects-grid js-grid">
+                            {% for p in projects_overview %}
+                            <a href="{% url 'project_expenses' p.id %}" class="proj-card budget" data-card-item>
+                                <div>
+                                    {% if p.last_updated %}<p class="text-xs text-gray-500">Last updated {{ p.last_updated|date:"F j, Y" }}</p>{% endif %}
+                                    <h3 class="proj-title">{{ p.title }}</h3>
+                                </div>
+                                <div class="proj-status">
+                                    <canvas class="proj-donut" width="140" height="140" data-percent="{{ p.percent_remaining|default:0 }}"></canvas>
+                                </div>
+                                <p class="progress-done-message text-sm">{{ p.percent_remaining }}% of budget remaining</p>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        <div id="cardPagination" class="pagination-container"></div>
+                        
+                        <div id="projectsListView" style="margin-top: 1rem;">
+                            <table class="user-table js-hidden">
+                                <thead><tr><th>Title</th><th>Updated</th><th>Remaining</th></tr></thead>
+                                <tbody id="projectsListBody">
+                                    {% for p in projects_overview %}
+                                    <tr data-list-item>
+                                        <td>{{ p.title }}</td>
+                                        <td>{% if p.last_updated %}{{ p.last_updated|date:"M d, Y" }}{% else %}-{% endif %}</td>
+                                        <td>{{ p.percent_remaining }}%</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="listPagination" class="pagination-container js-hidden"></div>
+                        {% else %}
+                        <div>No projects found.</div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
-            <button class="view-btn" id="listBtn" style="margin-left: 1rem;"> 
-              <svg width="30" height="30" style="fill: currentColor;">
-                  <use href="#list"/>
-              </svg>
-            </button>
-            <button class="view-btn active" id="cardBtn">
-              <svg width="30" height="30" style="fill: currentColor;">
-                  <use href="#card"/>
-              </svg>
-            </button>
-            </div>
-          </div>
-          <div class="card-holder">
-            <div class="card">
-              <p><i>Last updated January 01, 2024</i></p>
-              <h3 class="project-title">The Idler Wheel Is Wiser Than the Driver of the Screw and Whipping Cords Will Serve You More Than Ropes Will</h3>
-              <div class="project-authors"> 
-                  <content>
-                      <img src="https://img.apmcdn.org/3ddbb3761de2e44418a47d0e2ecce75a3bc686c3/square/35d350-20130729-fiona-apple.jpg" alt="">
-                  </content> 
-                  <content>
-                      <img src="https://img.apmcdn.org/3ddbb3761de2e44418a47d0e2ecce75a3bc686c3/square/35d350-20130729-fiona-apple.jpg" alt="">
-                  </content>
-              </div>
-              <div class="progress">
-                <div class="progress-bar" id="progressBar"></div>
-              </div>
-              <p id="statusText" class="status-text">20% of budget remianing</p>
-            </div>
-            <div class="card">
-              <p><i>Last updated January 01, 2024</i></p>
-              <h3 class="project-title">The Idler Wheel Is Wiser Than the Driver of the Screw and Whipping Cords Will Serve You More Than Ropes Will</h3>
-              <div class="project-authors"> 
-                  <content>
-                      <img src="https://img.apmcdn.org/3ddbb3761de2e44418a47d0e2ecce75a3bc686c3/square/35d350-20130729-fiona-apple.jpg" alt="">
-                  </content> 
-                  <content>
-                      <img src="https://img.apmcdn.org/3ddbb3761de2e44418a47d0e2ecce75a3bc686c3/square/35d350-20130729-fiona-apple.jpg" alt="">
-                  </content>
-              </div>
-              <div class="progress">
-                <div class="progress-bar" id="progressBar"></div>
-              </div>
-              <p id="statusText" class="status-text">20% of budget remianing</p>
-            </div>
-            <div class="card">
-              <p><i>Last updated January 01, 2024</i></p>
-              <h3 class="project-title">The Idler Wheel Is Wiser Than the Driver of the Screw and Whipping Cords Will Serve You More Than Ropes Will</h3>
-              <div class="project-authors"> 
-                  <content>
-                      <img src="https://img.apmcdn.org/3ddbb3761de2e44418a47d0e2ecce75a3bc686c3/square/35d350-20130729-fiona-apple.jpg" alt="">
-                  </content> 
-                  <content>
-                      <img src="https://img.apmcdn.org/3ddbb3761de2e44418a47d0e2ecce75a3bc686c3/square/35d350-20130729-fiona-apple.jpg" alt="">
-                  </content>
-              </div>
-              <div class="progress">
-                <div class="progress-bar" id="progressBar"></div>
-              </div>
-              <p id="statusText" class="status-text">20% of budget remianing</p>
-            </div>
-            <div class="card">
-              <p><i>Last updated January 01, 2024</i></p>
-              <h3 class="project-title">The Idler Wheel Is Wiser Than the Driver of the Screw and Whipping Cords Will Serve You More Than Ropes Will</h3>
-              <div class="project-authors"> 
-                  <content>
-                      <img src="https://img.apmcdn.org/3ddbb3761de2e44418a47d0e2ecce75a3bc686c3/square/35d350-20130729-fiona-apple.jpg" alt="">
-                  </content> 
-                  <content>
-                      <img src="https://img.apmcdn.org/3ddbb3761de2e44418a47d0e2ecce75a3bc686c3/square/35d350-20130729-fiona-apple.jpg" alt="">
-                  </content>
-              </div>
-              <div class="progress">
-                <div class="progress-bar" id="progressBar"></div>
-              </div>
-              <p id="statusText" class="status-text">20% of budget remianing</p>
-            </div>
-          </div>
-          <div class="list-holder hidden">
-            <table class="project-table">
-                <thead>
-                    <tr>
-                        <th>Title</th>
-                        <th>Progress</th>
-                        <th>Last updated</th>
-                        <th>Date started</th>
-                        <th>Provider/s</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Table rows will be dynamically inserted here -->
-                </tbody>
-            </table>
         </div>
-      </div>
-      <div class="logs">
-        <div class="files-header">
-          <h2>Logs</h2>
-          <button class="expand-rev"> 
-              <svg width="20" height="20" style="fill: currentColor;">
-                  <use href="#expand"/>
-              </svg>
-          </button>
-        </div>
-        <div id="logsList" class="logs-list">
-        </div>
-      </div>
-    </section>
-    <section>
-      <div class="summary">
-        <div>
-          <h2>College Budget</h2>
-          <div class="college-budget">
-            chart
-          </div>
-        </div>
-        <div>
-          <h2>Historical Summary</h2>
-          <div class="history">
-            <div class="budget-box">
-              <p class="budget-text">
-                Your college’s current budget for this quarter is ₱70,000.00. It is
-              </p>
-              <p class="budget-percentage">8%</p>
-              <p class="budget-note">less than historical mean.</p>
-            </div>
-            <div>
-              chart
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-  <footer>
-    <p>© 2025 Budget Dashboard</p>
-  </footer>
 
-  <script>
-    // Dropdown logic
-    document.querySelectorAll('.dropdown-btn2').forEach(btn => {
-        btn.addEventListener('click', e => {
-            e.stopPropagation();
-            const menu = btn.nextElementSibling;
-            document.querySelectorAll('.dropdown-menu2').forEach(m => {
-                if (m !== menu) m.classList.add('hidden');
+        {# BOTTOM div: LOGS (Full Width) #}
+        
+        <div class="list" style="margin-top: 1rem;">
+            <h2 class="headerr">Charts</h2>
+            {% if request.user.role == "FACULTY" %}        
+            <div class="chart-box">
+                <h3 class="chart-box-title">College Budget Remaining Over Time</h3>
+                <div class="chart-container-large">
+                    <canvas id="collegeTimeChart" data-chart-data="{{ college_remaining_data_json }}"></canvas>
+                </div>
+            </div>
+            {% endif %}        
+            <div class="chart-box">
+                <h3 class="chart-box-title">Total Project Funding Over Time</h3>
+                <div class="chart-container-large">
+                    <canvas id="facultyTotalChart" data-chart-data="{{ faculty_total_data_json }}"></canvas>
+                </div>
+            </div>
+        </div>
+        
+
+        {# SVG Icons #}
+        <svg style="display: none;">
+            <symbol id="icon-search" viewBox="0 0 21 21" fill="none">
+                <path d="M8.89152 15.9057C9.75056 15.9057 10.6012 15.7365 11.3948 15.4077C12.1885 15.079 12.9096 14.5972 13.5171 13.9897C14.1245 13.3823 14.6064 12.6612 14.9351 11.8675C15.2638 11.0739 15.433 10.2232 15.433 9.36417C15.433 8.50513 15.2638 7.6545 14.9351 6.86084C14.6064 6.06719 14.1245 5.34606 13.5171 4.73862C12.9096 4.13119 12.1885 3.64934 11.3948 3.3206C10.6012 2.99186 9.75056 2.82266 8.89152 2.82266C7.1566 2.82266 5.49274 3.51185 4.26597 4.73862C3.03919 5.9654 2.35 7.62926 2.35 9.36417C2.35 11.0991 3.03919 12.763 4.26597 13.9897C5.49274 15.2165 7.1566 15.9057 8.89152 15.9057V15.9057ZM15.7819 14.713L19.685 18.6161C19.7891 18.7167 19.872 18.8371 19.9291 18.9701C19.9861 19.1032 20.0161 19.2463 20.0173 19.391C20.0184 19.5358 19.9907 19.6793 19.9358 19.8133C19.8809 19.9472 19.7999 20.0689 19.6974 20.1712C19.595 20.2735 19.4732 20.3544 19.3392 20.4091C19.2052 20.4638 19.0616 20.4913 18.9168 20.4899C18.772 20.4886 18.629 20.4584 18.496 20.4012C18.3631 20.3439 18.2428 20.2608 18.1423 20.1566L14.2392 16.2535C12.4866 17.614 10.2814 18.2554 8.07247 18.0472C5.86357 17.839 3.81705 16.7968 2.34951 15.1328C0.881971 13.4688 0.103735 11.308 0.173229 9.09044C0.242723 6.87284 1.15472 4.76508 2.72357 3.19623C4.29242 1.62738 6.40018 0.715379 8.61778 0.645885C10.8354 0.576391 12.9961 1.35463 14.6601 2.82217C16.3241 4.28971 17.3663 6.33623 17.5745 8.54513C17.7827 10.754 17.1413 12.9592 15.7808 14.7119L15.7819 14.713Z" fill="#5A5252"/>
+            </symbol>
+            <symbol id="icon-filter" viewBox="0 0 23 22" fill="none">
+                <path opacity="0.9" d="M21.5399 1.92871H1.37988L9.44388 11.4644V18.0567L13.4759 20.0727V11.4644L21.5399 1.92871Z" stroke="#1E1E1E" stroke-width="2.016" stroke-linecap="round" stroke-linejoin="round"/>
+            </symbol>
+        </svg>
+    </div>
+<script>
+    const DASH_ROOT = document.querySelector('[data-dashboard]');
+    const IS_DASH = !!(DASH_ROOT && DASH_ROOT.getAttribute('data-dashboard') === '1');
+    const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    // --- FIX: Define missing class constants ---
+    const CLASS_HIDDEN = 'js-hidden';
+    const CLASS_GRID = 'js-grid';
+    const CLASS_TABLE = 'js-table'; // NOTE: This class is not explicitly defined in the HTML/CSS but is used for logical separation in JS.
+    const CLASS_FLEX = 'flex'; // Assuming flex is a utility class for the pagination container
+
+    // Filter dropdown logic
+    const filterBtn = document.getElementById('filterBtn');
+    const filterDropdown = document.getElementById('filterDropdown');
+    const closeFilter = document.getElementById('closeFilter');
+    
+    // Set initial state for dropdown if it's supposed to be hidden by default but might have style attribute issue
+    if (filterDropdown) {
+        // Ensure the style attribute starts as hidden if no parameters are set (assuming Django logic handles visibility on filter search submit)
+        if (!window.location.search.includes('search') && !window.location.search.includes('sort_by')) {
+             filterDropdown.style.display = 'none'; 
+        } else {
+             filterDropdown.style.display = 'block'; 
+        }
+    }
+
+    if (filterBtn && filterDropdown) {
+        filterBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation(); 
+            // Toggles visibility
+            if (filterDropdown.style.display === 'none' || filterDropdown.style.display === '') {
+                filterDropdown.style.display = 'block';
+            } else {
+                filterDropdown.style.display = 'none';
+            }
+        });
+    }
+    if (closeFilter && filterDropdown) {
+        closeFilter.addEventListener('click', function(e) {
+            e.preventDefault();
+            // Clear filters by redirecting to base URL without query parameters
+            window.location.href = window.location.pathname;
+        });
+    }
+    // Hide dropdown when clicking outside
+    document.addEventListener('mousedown', function(e) {
+        if (filterDropdown && filterDropdown.style.display !== 'none' && e.target !== filterBtn && !filterBtn.contains(e.target) && !filterDropdown.contains(e.target)) {
+            filterDropdown.style.display = 'none';
+        }
+    });
+
+    // Dashboard view toggle (only when on dashboard)
+    (function dashboardToggle(){
+        if (!IS_DASH) return;
+        const cardBtn = document.getElementById('cardViewBtn');
+        const listBtn = document.getElementById('listViewBtn');
+        const cardView = document.getElementById('projectsCardView');
+        const listView = document.getElementById('projectsListView');
+        const cardPagination = document.getElementById('cardPagination');
+        const listPagination = document.getElementById('listPagination');
+
+        // Get the actual table element inside the list view wrapper
+        const innerTable = listView ? listView.querySelector('table') : null;
+        
+        if (cardBtn && listBtn && cardView && listView && innerTable){
+            cardBtn.addEventListener('click', ()=>{ 
+                cardBtn.classList.add('active'); 
+                cardBtn.classList.remove('inactive');
+                listBtn.classList.remove('active'); 
+                listBtn.classList.add('inactive');
+                
+                // Card View ON
+                if(cardView){cardView.classList.add(CLASS_GRID); cardView.classList.remove(CLASS_HIDDEN);} 
+                if(listView){listView.classList.add(CLASS_HIDDEN); listView.classList.remove(CLASS_TABLE);} 
+                if(innerTable){innerTable.classList.add(CLASS_HIDDEN);} 
+                if(cardPagination){cardPagination.classList.add(CLASS_FLEX); cardPagination.classList.remove(CLASS_HIDDEN);}
+                if(listPagination){listPagination.classList.add(CLASS_HIDDEN); listPagination.classList.remove(CLASS_FLEX);}
+                initCardPagination();
             });
-            menu.classList.toggle('hidden');
-        });
-    });
+            listBtn.addEventListener('click', ()=>{ 
+                listBtn.classList.add('active'); 
+                listBtn.classList.remove('inactive'); 
+                cardBtn.classList.remove('active'); 
+                cardBtn.classList.add('inactive');
+                
+                // List View ON
+                // FIX: Removed CLASS_GRID/CLASS_TABLE logic that was confusing. Focus on HIDDEN class.
+                if(cardView){cardView.classList.add(CLASS_HIDDEN);} 
+                if(listView){listView.classList.remove(CLASS_HIDDEN);}
+                if(innerTable){innerTable.classList.remove(CLASS_HIDDEN);} // Ensure table is visible
+                if(cardPagination){cardPagination.classList.add(CLASS_HIDDEN); cardPagination.classList.remove(CLASS_FLEX);}
+                if(listPagination){listPagination.classList.add(CLASS_FLEX); listPagination.classList.remove(CLASS_HIDDEN);}
+                initListPagination();
+            });
+        }
+    })();
 
-    document.querySelectorAll('.dropdown-item2').forEach(item => {
-        item.addEventListener('click', e => {
-            e.stopPropagation();
-            const menu = item.parentElement;
-            const btn = menu.previousElementSibling;
-            btn.textContent = e.target.textContent + " ▾";
-            menu.classList.add('hidden');
-        });
-    });
-
-    document.addEventListener('click', () => {
-        document.querySelectorAll('.dropdown-menu2').forEach(menu => {
-            menu.classList.add('hidden');
-        });
-    });
-
-    const projects = [
-    {
-        title: "College of Arts and Humanities Budget Request",
-        updated: "January 1, 2024",
-        started: "January 3, 2024",
-        completed: 70000,
-        total: 100000,
-        providers: [
-            { name: "Person 1", img: "https://img.apmcdn.org/3ddbb3761de2e44418a47d0e2ecce75a3bc686c3/square/35d350-20130729-fiona-apple.jpg" }
-        ]
-    },
-    {
-        title: "College of Sciences Budget Allocation",
-        updated: "January 2, 2023",
-        started: "January 3, 2022",
-        completed: 45000,
-        total: 50000,
-        providers: Array(3).fill().map((_, i) => ({ 
-            name: `Person ${i+1}`, 
-            img: "https://img.apmcdn.org/3ddbb3761de2e44418a47d0e2ecce75a3bc686c3/square/35d350-20130729-fiona-apple.jpg" 
-        }))
-    },
-    // Add more budget projects as needed
-];
-
-function renderCardView() {
-    const cardHolder = document.querySelector('.card-holder');
-    const listHolder = document.querySelector('.list-holder');
-    const projectTable = document.querySelector('.project-table');
-    
-    listHolder.style.display = 'none';
-    projectTable.style.display = 'none';
-    cardHolder.style.display = 'grid';
-    
-    cardHolder.innerHTML = '';
-
-    projects.forEach(proj => {
-        const percentage = Math.round((proj.completed / proj.total) * 100);
-        const card = document.createElement('div');
-        card.className = 'card';
+    // Time Series Charts
+    (function initTimeCharts(){
+        if (!IS_DASH) return;
+        if (!window.Chart) return;
         
-        const maxVisibleProviders = 5;
-        const providerImages = proj.providers
-            .slice(0, maxVisibleProviders)
-            .map(p => `<img src="${p.img}" alt="${p.name}">`).join('');
-        
-        const remainingProviders = proj.providers.length - maxVisibleProviders;
-        const plusIndicator = remainingProviders > 0 ? 
-            `<span class="plus-indicator">+${remainingProviders}</span>` : '';
-        
-        card.innerHTML = `
-            <p><i>Last updated ${proj.updated}</i></p>
-            <h3 class="project-title">${proj.title}</h3>
-            <div class="project-authors">
-                ${providerImages}
-                ${plusIndicator}
-            </div>
-            <div class="progress">
-                <div class="progress-bar" style="width: ${percentage}%"></div>
-            </div>
-            <p class="status-text">${percentage}% of budget remaining</p>
-        `;
-        
-        cardHolder.appendChild(card);
-    });
-}
+        // Chart 1: College Budget Remaining Over Time
+        const collegeChartEl = document.getElementById('collegeTimeChart');
+        const collegeChartDataRaw = collegeChartEl ? collegeChartEl.getAttribute('data-chart-data') : '[]';
+        const collegeData = collegeChartDataRaw ? JSON.parse(collegeChartDataRaw) : [];
 
-function renderListView() {
-    const cardHolder = document.querySelector('.card-holder');
-    const listHolder = document.querySelector('.list-holder');
-    const projectTable = document.querySelector('.project-table');
-    
-    cardHolder.style.display = 'none';
-    listHolder.style.display = 'block';
-    projectTable.style.display = 'table';
-    
-    const tbody = document.querySelector(".project-table tbody");
-    tbody.innerHTML = "";
-
-    projects.forEach(proj => {
-        const percentage = Math.round((proj.completed / proj.total) * 100);
-        const row = document.createElement("tr");
-
-        row.innerHTML = `
-            <td>${proj.title}</td>
-            <td><strong>₱${proj.completed.toLocaleString()}</strong></td>
-            <td>${proj.updated}</td>
-            <td>${proj.started}</td>
-            <td class="provider-cell"></td>
-        `;
-
-        const providerCell = row.querySelector(".provider-cell");
-        
-        if (proj.providers[0]) {
-            const img = document.createElement("img");
-            img.src = proj.providers[0].img;
-            img.alt = proj.providers[0].name;
-            providerCell.appendChild(img);
+        if (collegeChartEl && collegeData.length > 0) {
+            new Chart(collegeChartEl.getContext('2d'), {
+                type: 'line',
+                data: { 
+                    labels: MONTH_LABELS, 
+                    datasets: [{ 
+                        label: 'College Budget Remaining', 
+                        data: collegeData, 
+                        borderColor: '#0f3ea3', 
+                        backgroundColor: 'rgba(15, 62, 163, 0.1)', 
+                        fill: true,
+                        tension: 0.35 
+                    }] 
+                },
+                options: { 
+                    responsive:true, 
+                    maintainAspectRatio:false, 
+                    plugins:{ 
+                        legend:{ display:false },
+                        tooltip:{ enabled:false } // <--- FIX APPLIED HERE
+                    }, 
+                    scales:{ y:{ beginAtZero: false, title: { display: true, text: 'Percent (%)' } } } 
+                }
+            });
         }
 
-        if (proj.providers.length > 1) {
-            const span = document.createElement("span");
-            span.textContent = `+${proj.providers.length - 1}`;
-            providerCell.appendChild(span);
+        // Chart 2: User's Total Project Budget Over Time
+        const facultyChartEl = document.getElementById('facultyTotalChart');
+        const facultyChartDataRaw = facultyChartEl ? facultyChartEl.getAttribute('data-chart-data') : '[]';
+        const facultyData = facultyChartDataRaw ? JSON.parse(facultyChartDataRaw) : [];
+
+        if (facultyChartEl && facultyData.length > 0) {
+            new Chart(facultyChartEl.getContext('2d'), {
+                type: 'line',
+                data: { 
+                    labels: MONTH_LABELS, 
+                    datasets: [{ 
+                        label: 'Total Project Funding', 
+                        data: facultyData, 
+                        borderColor: '#10b981', 
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)', 
+                        fill: true,
+                        tension: 0.35 
+                    }] 
+                },
+                options: { 
+                    responsive:true, 
+                    maintainAspectRatio:false, 
+                    plugins:{ 
+                        legend:{ display:false }, 
+                        tooltip:{ enabled:false } // <--- FIX APPLIED HERE
+                    }, 
+                    scales:{ y:{ beginAtZero: true, title: { display: true, text: 'Amount (₱)' } } } 
+                }
+            });
+        }
+    })();
+
+
+    // Small project donuts on dashboard cards with center percentage text
+    (function projectDonuts(){
+        if (!IS_DASH) return;
+        if (!window.Chart) return;
+        try {
+            const centerText = pct => ({
+                id: 'centerText',
+                afterDraw(chart){
+                    const {ctx, chartArea:{left,right,top,bottom}} = chart;
+                    const x=(left+right)/2, y=(top+bottom)/2;
+                    ctx.save();
+                    ctx.font = '600 14px Inter, Arial, sans-serif';
+                    ctx.fillStyle = '#111';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(`${pct}%`, x, y);
+                    ctx.restore();
+                }
+            });
+            document.querySelectorAll('.proj-donut').forEach((canvas)=>{
+                const pct = Math.max(0, Math.min(100, Number(canvas.getAttribute('data-percent')) || 0));
+                const ctx = canvas.getContext('2d');
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: { datasets: [{ data: [pct, Math.max(0, 100 - pct)], backgroundColor: ['#16a34a', '#d1d5db'], borderWidth: 0 }] },
+                    options: { 
+                        responsive:false, 
+                        animation:false, 
+                        cutout: '70%', 
+                        plugins:{ 
+                            legend:{ display:false }, 
+                            tooltip:{ enabled:false } // <--- FIX APPLIED HERE
+                        } 
+                    },
+                    plugins: [centerText(pct)]
+                });
+            });
+        } catch (err) { console.error('Project donuts error', err); }
+    })();
+
+
+    // Card View Pagination (4 items per page)
+    function initCardPagination() {
+        if (!IS_DASH) return;
+        const cardView = document.getElementById('projectsCardView');
+        const container = document.getElementById('cardPagination');
+        if (!cardView || !container) return;
+        
+        const items = Array.from(cardView.querySelectorAll('[data-card-item]'));
+        if (items.length === 0) { container.innerHTML = ''; return; }
+        
+        const pageSize = 4;
+        let currentPage = 1;
+        
+        function renderPage(page) {
+            const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+            currentPage = Math.min(Math.max(1, page), totalPages);
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            
+            items.forEach((item, i) => {
+                item.style.display = (i >= start && i < end) ? '' : 'none';
+            });
+            
+            renderControls(totalPages);
+        }
+        
+        function renderControls(totalPages) {
+            container.innerHTML = '';
+            
+            const firstBtn = document.createElement('button');
+            firstBtn.className = 'pagination-button';
+            firstBtn.textContent = 'First';
+            firstBtn.disabled = currentPage === 1;
+            if (currentPage !== 1) firstBtn.addEventListener('click', () => renderPage(1));
+            container.appendChild(firstBtn);
+            
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'pagination-button';
+            prevBtn.textContent = 'Previous';
+            prevBtn.disabled = currentPage === 1;
+            if (currentPage !== 1) prevBtn.addEventListener('click', () => renderPage(currentPage - 1));
+            container.appendChild(prevBtn);
+            
+            const pages = computePageNumbers(totalPages, currentPage);
+            pages.forEach(p => {
+                if (p === '…') {
+                    const span = document.createElement('span');
+                    span.textContent = '…';
+                    span.style.padding = '0 0.5rem';
+                    container.appendChild(span);
+                } else {
+                    const btn = document.createElement('button');
+                    btn.className = 'pagination-button';
+                    if (p === currentPage) btn.classList.add('active');
+                    btn.textContent = p;
+                    btn.disabled = p === currentPage;
+                    if (p !== currentPage) btn.addEventListener('click', () => renderPage(p));
+                    container.appendChild(btn);
+                }
+            });
+            
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'pagination-button';
+            nextBtn.textContent = 'Next';
+            nextBtn.disabled = currentPage === totalPages;
+            if (currentPage !== totalPages) nextBtn.addEventListener('click', () => renderPage(currentPage + 1));
+            container.appendChild(nextBtn);
+            
+            const lastBtn = document.createElement('button');
+            lastBtn.className = 'pagination-button';
+            lastBtn.textContent = 'Last';
+            lastBtn.disabled = currentPage === totalPages;
+            if (currentPage !== totalPages) lastBtn.addEventListener('click', () => renderPage(totalPages));
+            container.appendChild(lastBtn);
+        }
+        
+        function computePageNumbers(total, current) {
+            const windowSize = 1;
+            const pages = [];
+            const add = n => { if (!pages.includes(n)) pages.push(n); };
+            
+            add(1);
+            add(total);
+            for (let i = current - windowSize; i <= current + windowSize; i++) {
+                if (i > 1 && i < total) add(i);
+            }
+            pages.sort((a, b) => a - b);
+            
+            const result = [];
+            for (let i = 0; i < pages.length; i++) {
+                result.push(pages[i]);
+                if (i < pages.length - 1 && pages[i + 1] - pages[i] > 1) {
+                    result.push('…');
+                }
+            }
+            return result;
+        }
+        
+        renderPage(1);
+    }
+
+    // List View Pagination (5 items per page)
+    function initListPagination() {
+        if (!IS_DASH) return;
+        const tbody = document.getElementById('projectsListBody');
+        const container = document.getElementById('listPagination');
+        // The table element itself is the parent of tbody, so we also ensure the table is visible
+        const tableWrapper = document.getElementById('projectsListView');
+        if (!tbody || !container || !tableWrapper) return;
+        
+        // FIX: The list view needs the inner table to be visible (by removing js-hidden)
+        const innerTable = tableWrapper.querySelector('table');
+        if (innerTable) {
+            innerTable.classList.remove('js-hidden'); 
         }
 
-        tbody.appendChild(row);
-    });
-}
-
-// Update event listeners
-const cardBtn = document.getElementById('cardBtn');
-const listBtn = document.getElementById('listBtn');
-
-function setActive(button) {
-    document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
-    button.classList.add('active');
-}
-
-cardBtn.addEventListener('click', () => {
-    setActive(cardBtn);
-    renderCardView();
-});
-
-listBtn.addEventListener('click', () => {
-    setActive(listBtn);
-    renderListView();
-});
-
-    function updateEventProgress() {
-    const completed = 3; // example value
-    const total = 5;     // example value
-    const percentage = (completed / total) * 100;
-
-    // Update progress bar
-    document.getElementById('progressBar').style.width = percentage + "%";
-
-    // Update status text
-    document.getElementById('statusText').textContent =
-        `${completed} out of ${total} events completed`;
+        const items = Array.from(tbody.querySelectorAll('[data-list-item]'));
+        if (items.length === 0) { container.innerHTML = ''; return; }
+        
+        const pageSize = 5;
+        let currentPage = 1;
+        
+        function renderPage(page) {
+            const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+            currentPage = Math.min(Math.max(1, page), totalPages);
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            
+            items.forEach((item, i) => {
+                item.style.display = (i >= start && i < end) ? '' : 'none';
+            });
+            
+            renderControls(totalPages);
+        }
+        
+        function renderControls(totalPages) {
+            container.innerHTML = '';
+            
+            const firstBtn = document.createElement('button');
+            firstBtn.className = 'pagination-button';
+            firstBtn.textContent = 'First';
+            firstBtn.disabled = currentPage === 1;
+            if (currentPage !== 1) firstBtn.addEventListener('click', () => renderPage(1));
+            container.appendChild(firstBtn);
+            
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'pagination-button';
+            prevBtn.textContent = 'Previous';
+            prevBtn.disabled = currentPage === 1;
+            if (currentPage !== 1) prevBtn.addEventListener('click', () => renderPage(currentPage - 1));
+            container.appendChild(prevBtn);
+            
+            const pages = computePageNumbers(totalPages, currentPage);
+            pages.forEach(p => {
+                if (p === '…') {
+                    const span = document.createElement('span');
+                    span.textContent = '…';
+                    span.style.padding = '0 0.5rem';
+                    container.appendChild(span);
+                } else {
+                    const btn = document.createElement('button');
+                    btn.className = 'pagination-button';
+                    if (p === currentPage) btn.classList.add('active');
+                    btn.textContent = p;
+                    btn.disabled = p === currentPage;
+                    if (p !== currentPage) btn.addEventListener('click', () => renderPage(p));
+                    container.appendChild(btn);
+                }
+            });
+            
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'pagination-button';
+            nextBtn.textContent = 'Next';
+            nextBtn.disabled = currentPage === totalPages;
+            if (currentPage !== totalPages) nextBtn.addEventListener('click', () => renderPage(currentPage + 1));
+            container.appendChild(nextBtn);
+            
+            const lastBtn = document.createElement('button');
+            lastBtn.className = 'pagination-button';
+            lastBtn.textContent = 'Last';
+            lastBtn.disabled = currentPage === totalPages;
+            if (currentPage !== totalPages) lastBtn.addEventListener('click', () => renderPage(totalPages));
+            container.appendChild(lastBtn);
+        }
+        
+        function computePageNumbers(total, current) {
+            const windowSize = 1;
+            const pages = [];
+            const add = n => { if (!pages.includes(n)) pages.push(n); };
+            
+            add(1);
+            add(total);
+            for (let i = current - windowSize; i <= current + windowSize; i++) {
+                if (i > 1 && i < total) add(i);
+            }
+            pages.sort((a, b) => a - b);
+            
+            const result = [];
+            for (let i = 0; i < pages.length; i++) {
+                result.push(pages[i]);
+                if (i < pages.length - 1 && pages[i + 1] - pages[i] > 1) {
+                    result.push('…');
+                }
+            }
+            return result;
+        }
+        
+        renderPage(1);
     }
 
-    // Run once on page load
-    updateEventProgress();
-
-    function updateEventProgress() {
-    const completed = 3; // example value
-    const total = 5;     // example value
-    const percentage = (completed / total) * 100;
-
-    // Update progress bar
-    document.getElementById('progressBar').style.width = percentage + "%";
-
-    // Update status text (rounded to whole number)
-    document.getElementById('statusText').textContent =
-      `${Math.round(percentage)}% of budget remaining`;
+    // Initialize card pagination on page load (default view)
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initCardPagination);
+    } else {
+        initCardPagination();
     }
-    const logs = [
-      {
-        amount: "2,000.00",
-        description: "Action Research Upskilling for TES, KES, IES, and ISES",
-        time: "09:08 P.M. December 30, 2023"
-      },
-      {
-        amount: "1,500.00",
-        description: "Training Materials for PDIs",
-        time: "08:42 P.M. December 28, 2023"
-      }
-      // add more logs here
-    ];
-
-    function renderLogs() {
-      const logsList = document.getElementById("logsList");
-      logsList.innerHTML = "";
-
-      logs.forEach(log => {
-        const item = document.createElement("div");
-        item.classList.add("log-item");
-        item.innerHTML = `
-          <strong>₱${log.amount}</strong> has been accounted for 
-          <a href="#">${log.description}</a>
-          <span class="log-time">${log.time}</span>
-        `;
-        logsList.appendChild(item);
-      });
-    }
-
-    renderLogs();
-
-  </script>
+</script>
 </body>
-</html>
 
 {% endblock %}

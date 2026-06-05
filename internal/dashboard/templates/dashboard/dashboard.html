@@ -1,564 +1,708 @@
 {% extends "base_internal.html" %}
 {% block content %}
-
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.css"/>
 <link href="https://fonts.googleapis.com/css?family=Inter:400,700,800&display=swap" rel="stylesheet">
-
-<style>
-    /* Dropdown wrapper and icon for Project Summary Table */
-    .dropdown-wrapper {
-        position: relative;
-        display: inline-block;
-    }
-
-    .dropdown-icon {
-        position: absolute;
-        right: 12px;
-        top: 40%;
-        transform: translateY(-50%);
-        pointer-events: none;
-        width: 16px;
-        height: 16px;
-        display: block;
-    }
-
-    body {
-        background: #F9F9F9;
-        margin: 0;
-        font-family: 'Inter', sans-serif;
-    }
-
-    .main-container {
-        margin: 60px;
-        display: flex;
-        flex-direction: column;
-        gap: 50px;
-    }
-
-    .container-1 {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        width: 100%;
-    }
-
-    .container-1A {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-
-    .container-1A-row {
-        display: flex;
-        flex-direction: row;
-        align-items: baseline;
-        gap: 10px;
-    }
-
-    .welcome-text {
-        font-size: 56px;
-        font-weight: 800;
-        background: linear-gradient(90deg, #4AFFDB 0%, #063A1C 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-
-    .ueso-text {
-        font-size: 48px;
-        font-weight: 700;
-        color: #000;
-    }
-
-    .viewing-text {
-        font-size: 19px;
-        font-weight: 400;
-        color: #000;
-    }
-
-    .container-1B {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: 10px;
-        background: #F8F8F8;
-        border-radius: 16px;
-        border: 1px solid rgba(0,0,0,0.18);
-        padding: 0 24px;
-        height: 45px; /* Set height to 45px */
-    }
-
-    .quarter-text {
-        font-size: 16px;
-        font-weight: 400;
-        color: #000;
-    }
-
-    .dropdown-arrow {
-        width: 16px;
-        height: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .dropdown-arrow svg {
-        display: block;
-    }
-</style>
-
-<!-- Overview Section -->
-<style>
-    .overview-section {
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
-    }
-
-    .overview-text {
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-        font-size: 24px;
-    }
-
-    .container-2 {
-        display: flex;
-        flex-direction: row;
-        justify-content: center;
-        align-items: center;
-        gap: 30px;
-    }
-
-    .container-2A {
-        position: relative;
-        width: 234px;
-        height: 128px;
-        border-radius: 16px;
-        padding: 30px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 10px;
-        background: #fff;
-        box-sizing: border-box;
-        z-index: 0;
-        border: none; /* Remove border-image and border */
-        overflow: hidden; /* Ensure the pseudo-element doesn't overflow */
-        text-decoration: none;
-    }
-
-    .container-2A:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        transform: translateY(-2px);
-    }
-
-    .container-2A::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-radius: 16px;
-        padding: 0.8px; /* Border thickness */
-        background: linear-gradient(180deg, #1CB889 0%, #000000 100%);
-        -webkit-mask:
-            linear-gradient(#fff 0 0) content-box,
-            linear-gradient(#fff 0 0);
-        -webkit-mask-composite: xor;
-        mask-composite: exclude;
-        z-index: -1;
-        pointer-events: none;
-    }
-
-    .container-2A-number {
-        font-family: 'Inter', sans-serif;
-        font-weight: 700;
-        font-size: 34px;
-        color: #000;
-    }
-    .container-2A-name {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 16px;
-        color: #000;
-    }
-</style>
-
-<!-- Summary Section -->
-<style>
-    .summary-section {
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
-    }
-
-    .summary-text {
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-        font-size: 24px;
-    }
-
-    .container-3 {
-        display: flex;
-        flex-direction: row;
-        gap: 30px;
-    }
-
-    .charts-container-outer {
-        flex: 2;
-        background: #FEFCFC;
-        border-radius: 16px;
-        border: 1.1px solid rgba(0,0,0,0.4);
-        box-sizing: border-box;
-        display: flex;
-        align-items: stretch;
-        padding: 24px;
-        position: relative;
-    }
-
-    .expand-icon-container {
-        position: absolute;
-        top: 20px;
-        right: 20px;
-        z-index: 2;
-    }
-
-    .expand-icon {
-        cursor: pointer;
-        display: block;
-        transition: transform 0.3s;
-    }
-
-    .expand-icon-container:hover .expand-icon {
-        transform: scale(1.1);
-    }
-
-    .charts-inner {
-        display: flex;
-        flex-direction: row;
-        gap: 30px;
-        width: 100%;
-    }
-
-    .chart {
-        flex: 1;
-        background: transparent;
-        border-radius: 12px;
-        box-sizing: border-box;
-    }
-
-    .calendar-container {
-        flex: 1;
-        background: #FEFCFC;
-        border-radius: 16px;
-        border: 1.1px solid rgba(0,0,0,0.4);
-        box-sizing: border-box;
-        padding: 24px;
-        position: relative;
-    }
-</style>
-
-<!-- Project Summary Table -->
-<style>
-    /* Project Summary Table Styles */
-    .project-summary-table-container {
-        position: relative;
-        margin-top: 30px;
-        width: 100%;
-        background: #FEFCFC;
-        border-radius: 15px;
-        border: 1px solid rgba(0,0,0,0.42);
-        box-sizing: border-box;
-        padding: 0;
-        overflow: hidden;
-    }
-
-    .project-summary-table {
-        width: 100%;
-        border-collapse: collapse;
-        background: transparent;
-    }
-
-    .project-summary-table th, .project-summary-table td {
-        border: none;
-        padding: 16px 18px;
-        font-family: 'Inter', Arial, sans-serif;
-    }
-
-    .project-summary-table th {
-        font-weight: bold;
-        font-size: 18px;
-        background: transparent;
-        text-align: left;
-        border-bottom: 1.5px solid #E0E0E0;
-    }
-
-    .project-summary-table .header-row th {
-        font-weight: 400;
-        font-size: 15px;
-        background: transparent;
-        text-align: left;
-        border-bottom: 1.5px solid #E0E0E0;
-    }
-
-    .project-summary-table .dropdown {
-        font-family: 'Inter', Arial, sans-serif;
-        font-size: 16px;
-        padding: 8px 36px 8px 12px; /* extra right padding for icon */
-        border-radius: 12px;
-        border: 1px solid rgba(0,0,0,0.18);
-        background: #F8F8F8;
-        appearance: none;
-        cursor: pointer;
-        margin-left: 8px;
-        position: relative;
-    }
-
-    .project-summary-table .progress {
-        font-weight: 400;
-        font-size: 18px;
-        font-family: 'Inter', Arial, sans-serif;
-    }
-
-    .project-summary-table .progress.high {
-        color: #0B9620;
-    }
-
-    .project-summary-table .progress.low {
-        color: #E90000;
-    }
-
-    .expand-icon-bottom {
-        position: absolute;
-        bottom: 20px;
-        right: 20px;
-        width: 16px;
-        height: 16px;
-        cursor: pointer;
-    }
-</style>
-
-<!-- Table Section -->
-<style>
-    .name-link {
-        color:#0A6C44;
-        text-decoration:underline;
-    }
-
-    .checkmark-icon {
-        color:#1f7c57;
-        font-size:1.2em;
-        text-align: center;
-    }
-
-    .crossmark-icon {
-        color:#E53E3E;
-        font-size:1.2em;
-        text-align: center;
-    }
-
-    .user-table {
-        width: 100%;
-        border-collapse: collapse;
-        background: #FEFCFC;
-        border: 1px solid rgba(0,0,0,0.18);
-    }
-
-    .user-table th {
-        font-size: 14px;
-        font-weight: 500;
-        background: rgba(217, 217, 217, 0.2);
-        border-bottom: 1px solid rgba(0,0,0,0.18);
-        padding: 14px 12px;
-        text-align: left;
-        font-family: 'Inter', Arial, sans-serif;
-    }
-
-    .user-table td {
-        font-size: 12px;
-        font-weight: 400;
-        border: none;
-        border-bottom: 1px solid rgba(0,0,0,0.18);
-        padding: 14px 12px;
-        text-align: left;
-        font-family: 'Inter', Arial, sans-serif;
-    }
-
-    .user-table tr:last-child td {
-        border-bottom: none;
-    }
-
-    .settings-icon {
-        width: 16px;
-        height: 16px;
-        align-items: center;
-        justify-content: center;
-        display: inline-block;
-        vertical-align: middle;
-        cursor: pointer;
-    }
-
-    .user-table th.settings-col, .user-table td.settings-col {
-        text-align: center !important;
-    }
-</style>
-
-<!-- Goal Tile Card -->
-<style>
-    .goal-section {
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
-        width: 100%;
-    }
-
-    .goal-text {
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-        font-size: 24px;
-    }
-
-    .goal-card-container {
-        display: flex;
-        flex-direction: row;
-        gap: 15px;
-        width: 100%;
-    }
-
-    .goal-card {
-        position: relative;
-        flex: 1;
-        background: #fff;
-        border-radius: 18px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        padding: 40px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        border: 1px solid rgba(0, 0, 0, 0.42);
-        box-sizing: border-box;
-    }
-
-    .goal-card-kebab {
-        position: absolute;
-        top: 20px;
-        right: 20px;
-        cursor: pointer;
-    }
-
-    .goal-card-percent {
-        font-family: 'Inter', Arial, sans-serif;
-        font-weight: 900;
-        font-size: 32px;
-        color: #000000;
-        text-align: center;
-        margin-top: 40px;
-    }
-
-    .goal-card-title {
-        margin-top: 35px;
-        font-family: 'Inter', Arial, sans-serif;
-        font-weight: 400;
-        font-size: 15px;
-        color: #000000;
-        text-align: center;
-    }
-
-    .kebab-svg {
-        width: 16px;
-        height: 16px;
-    }
-</style>
-
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link href="{% static 'templates/dashboard.css' %}" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
+<style>
+/* --- Dashboard Goal Card Styling (Modified) --- */
+
+.goal-card-container {
+    display: flex;
+    /* Allow cards to wrap if screen is narrow, but they are generally expected to fit 4 */
+    flex-wrap: nowrap; 
+    gap: 20px;
+    margin-top: 0px; /* Adjusted to rely on the summary-text margin */
+    margin-bottom: 30px;
+}
+
+.goal-card-simple-dashboard {
+    position: relative;
+    /* Adjusted width to allow 4 cards to fit well in standard dashboard layout */
+    width: calc(25% - 15px); 
+    min-width: 200px;
+    height: 180px; 
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+    /* MODIFIED: Added gradient background using CSS variables from goals.html */
+    background-color: var(--card-bg, #ffffff);
+    background-image: linear-gradient(135deg, var(--card-start-bg, #f0f0f0) 0%, var(--card-bg) 100%);
+    
+    transition: all 0.3s ease;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.goal-card-simple-dashboard:hover {
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px) !important;
+    /* Set to background-color only on hover to remove gradient */
+    background-image: none !important; 
+}
+
+.goal-card-title-simple {
+    /* MODIFIED: Matched Title Styling from goals.html */
+    font-family: 'Inter', Arial, sans-serif;
+    font-weight: 500;
+    font-size: 1.25rem; /* Increased size */
+    color: #1A1A1A; /* Darker color */
+    line-height: 1.2;
+    white-space: nowrap; /* Prevent wrapping (truncate) */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+    padding-right: 40px; 
+    margin-top: 0;
+    /* margin-bottom is set inline in the template */
+}
+
+.goal-card-data-wrapper {
+    /* Ensures the progress bar is positioned relative to the numbers */
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1; /* Pushes content down if title is short */
+    justify-content: flex-end; /* Aligns content to the bottom */
+}
+
+.goal-card-percent-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.goal-card-number {
+    /* MODIFIED: Matched Nominator Styling from goals.html */
+    font-family: 'Inter', Arial, sans-serif;
+    font-size: 5.5rem;
+    font-weight: 900;
+    color: #ffffff;
+    line-height: 1;
+    margin-top: 0;
+    
+    /* Apply text-shadow for contrast */
+    text-shadow:
+        1px 1px 0 #555555,
+        -1px -1px 0 #cccccc,
+        0px 0px 10px rgba(0, 0, 0, 0.4);
+}
+
+.goal-card-denominator {
+    /* MODIFIED: Matched Denominator Wrapper Styling from goals.html */
+    font-weight: 700;
+    color: #555555;
+    text-shadow: none;
+    font-size: 1em; /* Base size for relative children */
+    line-height: 1.2;
+    margin-top: 8px;
+
+    /* Ensure the wrapper is a column to stack label and word-number */
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.goal-card-denominator .label {
+    /* MODIFIED: Matched Label/OUT OF Styling from goals.html */
+    font-size: 0.8em;
+    font-weight: 500;
+    color: #777;
+    display: block;
+    line-height: 1;
+}
+
+.goal-card-denominator .word-number {
+    /* MODIFIED: Matched Word Number Styling from goals.html */
+    font-size: 1em; 
+    font-weight: 700;
+    color: #555555;
+    text-shadow: none;
+    line-height: 1;
+}
+
+/* @media for responsiveness to ensure 4 cards fit */
+@media (max-width: 1400px) {
+    .goal-card-simple-dashboard {
+        width: calc(33.333% - 13.333px); /* 3 cards per row */
+    }
+}
+@media (max-width: 1000px) {
+    .goal-card-simple-dashboard {
+        width: calc(50% - 10px); /* 2 cards per row */
+    }
+}
+</style>
+
+<style>
+/* Notification Popup Styles */
+.notification-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+.notification-popup {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: hidden;
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.notification-header {
+    padding: 24px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.notification-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.notification-close:hover {
+    background: #f3f4f6;
+    color: #1f2937;
+}
+
+.notification-body {
+    padding: 16px 24px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.notification-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid #e5e7eb;
+}
+
+.notification-item:hover {
+    background: #e8f5e9;
+    border-color: #063A1C;
+    transform: translateX(4px);
+}
+
+.notification-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #063A1C 0%, #042a14 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.notification-content {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.notification-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.notification-count {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #063A1C;
+    background: #c8e6c9;
+    padding: 4px 12px;
+    border-radius: 8px;
+    min-width: 40px;
+    text-align: center;
+}
+
+.notification-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: flex-end;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.notification-btn {
+    padding: 10px 24px;
+    background: #063A1C;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.notification-btn:hover {
+    background: #042a14;
+    transform: translateY(-1px);
+}
+
+.notification-note {
+    font-size: 12px;
+    color: #6b7280;
+    font-style: italic;
+    padding: 0 0 0 0;
+    text-align: center;
+}
+
+/* Floating Pill Buttons */
+.floating-pill-btn {
+    position: fixed;
+    bottom: 40px;
+    right: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    background: #00681a;
+    color: white;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    z-index: 999;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.floating-pill-btn:hover {
+    background: #042a14;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.floating-pill-btn.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.floating-pill-btn.back-to-top {
+    padding: 12px 16px;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    justify-content: center;
+}
+
+.dropdown-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.date-range-chevron {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+</style>
+
+
 <body>
+    {% if user_role == "COORDINATOR" %}
+        {% if notifications.submitted_submissions|default:0 > 0 %}
+            <button id="viewRemindersBtn" class="floating-pill-btn">
+                <i class="fa-solid fa-bell"></i> View Reminders
+            </button>
+            <div id="notificationPopup" class="notification-popup-overlay" style="display:none;">
+                <div class="notification-popup">
+                    <div class="notification-header">
+                        <h2>Pending Items</h2>
+                        <button class="notification-close" onclick="closeNotificationPopup()">&times;</button>
+                    </div>
+                    <div class="notification-body">
+                        <div class="notification-item" onclick="toggleReminderDropdown('dropdownSubmittedSubmissions', event)">
+                            <div class="notification-icon"><i class="fa-solid fa-file-import"></i></div>
+                            <div class="notification-content">
+                                <div class="notification-title">Submitted Submissions</div>
+                                <div class="notification-count">{{ notifications.submitted_submissions }}</div>
+                            </div>
+                        </div>
+                        <div id="dropdownSubmittedSubmissions" style="display:none; margin-left: 44px;">
+                            {% for sub in submitted_submissions_list %}
+                                <a href="{% url 'project_submissions_details' sub.project.id sub.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                    <div class="notification-item" style="margin-top: 10px;">
+                                        <div class="notification-content">
+                                            <div class="notification-title">{{ sub.project.title }} — {{ sub.downloadable.name }}</div>
+                                        </div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    {% elif user_role in "VP,DIRECTOR,UESO" %}
+        {% with total1=notifications.forwarded_submissions|default:0|add:notifications.received_requests|default:0 %}
+        {% with total2=total1|add:notifications.unconfirmed_users|default:0 %}
+        {% with total_reminders=total2|add:notifications.pending_exports|default:0 %}
+        {% if total_reminders|add:0 > 0 %}
+            <button id="viewRemindersBtn" class="floating-pill-btn">
+                <i class="fa-solid fa-bell"></i> View Reminders
+            </button>
+            <div id="notificationPopup" class="notification-popup-overlay" style="display:none;">
+                <div class="notification-popup">
+                    <div class="notification-header">
+                        <h2>Pending Items</h2>
+                        <button class="notification-close" onclick="closeNotificationPopup()">&times;</button>
+                    </div>
+                    <div class="notification-body">
+                        {% if notifications.forwarded_submissions > 0 %}
+                        <div class="notification-item" onclick="toggleReminderDropdown('dropdownForwardedSubmissions', event)">
+                            <div class="notification-icon"><i class="fa-solid fa-file-arrow-up"></i></div>
+                            <div class="notification-content">
+                                <div class="notification-title">Forwarded Submissions</div>
+                                <div class="notification-count">{{ notifications.forwarded_submissions }}</div>
+                            </div>
+                        </div>
+                        <div id="dropdownForwardedSubmissions" style="display:none; margin-left: 44px;">
+                            {% for sub in forwarded_submissions_list %}
+                                <a href="{% url 'project_submissions_details' sub.project.id sub.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                    <div class="notification-item" style="margin-top: 10px;">
+                                        <div class="notification-content">
+                                            <div class="notification-title">{{ sub.project.title }} — {{ sub.downloadable.name }}</div>
+                                        </div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if notifications.received_requests > 0 %}
+                        <div class="notification-item" onclick="toggleReminderDropdown('dropdownReceivedRequests', event)">
+                            <div class="notification-icon"><i class="fa-solid fa-envelope"></i></div>
+                            <div class="notification-content">
+                                <div class="notification-title">Client Requests</div>
+                                <div class="notification-count">{{ notifications.received_requests }}</div>
+                            </div>
+                        </div>
+                        <div id="dropdownReceivedRequests" style="display:none; margin-left: 44px;">
+                            {% for req in received_requests_list %}
+                                <a href="{% url 'request_details_dispatcher' req.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                    <div class="notification-item" style="margin-top: 10px;">
+                                        <div class="notification-content">
+                                            <div class="notification-title">{{ req.title }}</div>
+                                        </div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if notifications.unconfirmed_users > 0 %}
+                        <div class="notification-item" onclick="toggleReminderDropdown('dropdownUnconfirmedUsers', event)">
+                            <div class="notification-icon"><i class="fa-solid fa-user-clock"></i></div>
+                            <div class="notification-content">
+                                <div class="notification-title">Pending Users</div>
+                                <div class="notification-count">{{ notifications.unconfirmed_users }}</div>
+                            </div>
+                        </div>
+                        <div id="dropdownUnconfirmedUsers" style="display:none; margin-left: 44px;">
+                            {% for u in unconfirmed_users_list %}
+                                <a href="{% url 'user_details' u.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                    <div class="notification-item" style="margin-top: 10px;">
+                                        <div class="notification-content">
+                                            <div class="notification-title">{{ u.get_full_name }} — {{ u.email }}</div>
+                                        </div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if notifications.pending_exports > 0 %}
+                        <div class="notification-item" onclick="toggleReminderDropdown('dropdownPendingExports', event)">
+                            <div class="notification-icon"><i class="fa-solid fa-download"></i></div>
+                            <div class="notification-content">
+                                <div class="notification-title">Export Requests</div>
+                                <div class="notification-count">{{ notifications.pending_exports }}</div>
+                            </div>
+                        </div>
+                        <div id="dropdownPendingExports" style="display:none; margin-left: 44px;">
+                            {% for exp in pending_exports_list %}
+                                <a href="{% url 'exports' %}#export-{{ exp.id }}" style="text-decoration:none;color:inherit;display:block;">
+                                    <div class="notification-item" style="margin-top: 10px;">
+                                        <div class="notification-content">
+                                            <div class="notification-title">{{ exp.get_type_display }} — {{ exp.submitted_by.get_full_name }}</div>
+                                        </div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+        {% endwith %}
+        {% endwith %}
+        {% endwith %}
+    {% endif %}
+    <!-- Back to Top Button -->
+    <button id="backToTopBtn" class="floating-pill-btn back-to-top">
+        <i class="fa-solid fa-arrow-up"></i>
+    </button>
+
+    <!-- Dashboard Card Popup (Reminder-style) -->
+    <div id="dashboardCardPopup" class="notification-popup-overlay" style="display:none;">
+        <div class="notification-popup">
+            <div class="notification-header">
+                <h2 id="dashboardCardPopupTitle">Details</h2>
+                <button class="notification-close" onclick="closeDashboardCardPopup()">&times;</button>
+            </div>
+            <div class="notification-body">
+                <div id="dashCardSectionPendingRequests" data-dashboard-card-section style="display:none;">
+                    {% for req in pending_requests_list %}
+                        <a href="{% url 'request_details_dispatcher' req.id %}" style="text-decoration:none;color:inherit;display:block;">
+                            <div class="notification-item" style="margin-top: 10px;">
+                                <div class="notification-content">
+                                    <div class="notification-title">{{ req.organization|default:"Request" }}</div>
+                                </div>
+                            </div>
+                        </a>
+                    {% empty %}
+                        <div class="no-data">No items at this time</div>
+                    {% endfor %}
+                </div>
+
+                <div id="dashCardSectionOngoingProjects" data-dashboard-card-section style="display:none;">
+                    {% for p in inprogress_projects_list %}
+                        <a href="{% url 'project_overview' p.id %}" style="text-decoration:none;color:inherit;display:block;">
+                            <div class="notification-item" style="margin-top: 10px;">
+                                <div class="notification-content">
+                                    <div class="notification-title">{{ p.title }}</div>
+                                </div>
+                            </div>
+                        </a>
+                    {% empty %}
+                        <div class="no-data">No items at this time</div>
+                    {% endfor %}
+                </div>
+
+                <div id="dashCardSectionExperts" data-dashboard-card-section style="display:none;">
+                    {% for u in expert_users_list %}
+                        <a href="{% url 'user_profile' u.id %}" style="text-decoration:none;color:inherit;display:block;">
+                            <div class="notification-item" style="margin-top: 10px;">
+                                <div class="notification-content">
+                                    <div class="notification-title">{{ u.get_full_name }}</div>
+                                </div>
+                            </div>
+                        </a>
+                    {% empty %}
+                        <div class="no-data">No items at this time</div>
+                    {% endfor %}
+                </div>
+
+                <div id="dashCardSectionEvents" data-dashboard-card-section style="display:none;">
+                    {% for e in events_list %}
+                        <a href="{% url 'calendar' %}" style="text-decoration:none;color:inherit;display:block;">
+                            <div class="notification-item" style="margin-top: 10px;">
+                                <div class="notification-content">
+                                    <div class="notification-title">{{ e }} — {{ e.datetime|date:"M d, Y h:i A" }}</div>
+                                </div>
+                            </div>
+                        </a>
+                    {% empty %}
+                        <div class="no-data">No items at this time</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <div class="main-container">
         <div class="container-1">
-            <div class="container-1A">
-                <div class="container-1A-row">
-                    <div class="welcome-text">Welcome</div>
-                    <div class="ueso-text">to UESO MIS</div>
-                </div>
-                {% if user.role == "COORDINATOR" %}
-                    <div class="viewing-text">You are currently viewing as a coordinator.</div>
-                {% elif user.role == "PROGRAM_HEAD" %}
-                    <div class="viewing-text">You are currently viewing as a program head.</div>
-                {% elif user.role == "DEAN" %}
-                    <div class="viewing-text">You are currently viewing as a dean.</div>
-                {% elif user.role == "UESO" %}
-                    <div class="viewing-text">You are currently viewing as a UESO member.</div>
-                {% elif user.role == "VP" %}
-                    <div class="viewing-text">You are currently viewing as a vice president.</div>
-                {% elif user.role == "DIRECTOR" %}
-                    <div class="viewing-text">You are currently viewing as a director.</div>
-                {% endif %}
+            <div class="container-1A" style="flex-direction: row;">
+                <div class="welcome-text">Welcome</div>
+                <div class="ueso-text">to UESO MIS</div>
             </div>
             <div class="container-1B">
-                <div class="quarter-text">This Quarter</div>
-                <div class="dropdown-arrow">
-                    <!-- Simple dropdown arrow SVG -->
-                    <svg width="16" height="16" viewBox="0 0 16 16">
-                        <polyline points="4,6 8,10 12,6" fill="none" stroke="#000" stroke-width="2"/>
-                    </svg>
+                <div class="dropdown" style="margin-left: 1.5rem;">
+                    <button id="dateRangeBtn" class="dropdown-btn">
+                        <span id="dateRangeLabel"></span>
+                        <svg class="date-range-chevron" aria-hidden="true"><use href="#icon-dropdown"></use></svg>
+                    </button>
+                    <div id="popupOverlay" class="popup-overlay">
+                        <div id="datePopup" class="date-popup">
+                            <h4>Select Date Range</h4>
+
+                            <label for="startDate">Start Date:</label>
+                            <input type="date" id="startDate" class="date-input">
+
+                            <label for="endDate">End Date:</label>
+                            <input type="date" id="endDate" class="date-input">
+
+                            <div class="popup-actions">
+                                <button id="confirmExport" class="confirm-btn">Confirm</button>
+                                <button id="cancelExport" class="cancel-btn">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Overview Section -->
         <div class="overview-section">
-            <div class="overview-text">Overview</div>
             <div class="container-2">
-                <a class="container-2A" href="{% url 'request_dispatcher' %}?status=PENDING">
+                {% if request.user.role == "UESO" or request.user.role == "VP" or request.user.role == "DIRECTOR" %}
+                <a class="container-2A" href="{% url 'request_dispatcher' %}?status=PENDING" onclick="openDashboardCardPopup('Request Pending', 'dashCardSectionPendingRequests', event)">
+                    <div class="card-icon-wrapper">
+                        <div class="circle">
+                            <i class="fas fa-clipboard-list"></i> 
+                        </div>
+                    </div>
                     <div class="container-2A-number">{{ pending_requests.count }}</div>
                     <div class="container-2A-name">Request Pending</div>
                 </a>
-                <a class="container-2A" href="{% url 'project_dispatcher' %}?status=IN_PROGRESS">
+                {% endif %}
+
+                <a class="container-2A" href="{% url 'project_dispatcher' %}?status=IN_PROGRESS" onclick="openDashboardCardPopup('Ongoing Projects', 'dashCardSectionOngoingProjects', event)">
+                    <div class="card-icon-wrapper">
+                        <div class="circle">
+                            <i class="fas fa-cogs"></i> 
+                        </div>
+                    </div>
                     <div class="container-2A-number">{{ inprogress_projects.count }}</div>
                     <div class="container-2A-name">Ongoing Projects</div>
                 </a>
-                <a class="container-2A" href="{% url 'experts' %}">
+                <a class="container-2A" href="{% url 'experts' %}" onclick="openDashboardCardPopup('Experts Active', 'dashCardSectionExperts', event)">
+                    <div class="card-icon-wrapper">
+                        <div class="circle">
+                            <i class="fas fa-users"></i> 
+                        </div>
+                    </div>
                     <div class="container-2A-number">{{ expert_users.count }}</div>
                     <div class="container-2A-name">Experts Active</div>
                 </a>
-                <a class="container-2A" href="{% url 'calendar' %}">
+
+                <a class="container-2A" href="{% url 'calendar' %}" onclick="openDashboardCardPopup('Events in Calendar', 'dashCardSectionEvents', event)">
+                    <div class="card-icon-wrapper">
+                        <div class="circle"><i class="fas fa-calendar-alt"></i></div>
+                    </div>
                     <div class="container-2A-number">{{ events_in_calendar }}</div>
                     <div class="container-2A-name">Events in Calendar</div>
                 </a>
             </div>
         </div>
 
-        <!-- Summary Section -->
-        <div class="summary-section">
-            <div class="summary-text">Summary</div>
-            <div class="container-3">
-                <!-- Charts Container: two charts inside one bordered box with expand icon -->
-                <div class="charts-container-outer">
-                    <div class="expand-icon-container">
-                        <svg class="expand-icon" width="16" height="16">
-                          <use href="#icon-expand"></use>
-                        </svg>
-                    </div>
-                    <div class="charts-inner">
-                        <!-- Agenda Distribution Here (Distribution of Project Depending on their Agenda) -->
-                    </div>
+        <div class="summary-section" style="overflow: visible;">
+            <div class="container-3" style="overflow: visible;">
+                
+                <div class="chart-container" style="max-height: 225px; overflow: visible;">
+                    <h3>Project Status Overview</h3>
+                    <canvas id="projectStatusChart"></canvas>
                 </div>
 
-                <!-- Calendar Container (blank, with expand icon) -->
+                <div class="chart-container">
+                    <h3>Submission Status Breakdown</h3>
+                    <canvas id="submissionStatusChart" style="max-height: 250px;"></canvas>
+                </div>
+
                 <div class="calendar-container">
-                    <canvas id="agendaPieChart" width="340" height="340"></canvas>
-                    <div class="expand-icon-container">
-                        <svg class="expand-icon" width="16" height="16">
-                          <use href="#icon-expand"></use>
-                        </svg>
+                    <div class="mini-calendar-widget">
+                        <div class="mini-calendar-header">
+                            <button class="prev-month" title="Previous Month">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <div class="current-month-year">October 2025</div>
+                            <button class="next-month" title="Next Month">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="mini-calendar-body">
+                            <div class="weekdays">
+                                <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                            </div>
+                            <div class="days-grid"></div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-
-            <!-- Project Summary Table now below charts and calendar -->
-            <table class="user-table">
+        
+        <div class="summary-text" style="margin-bottom: -2rem ;">Recently Updated Projects</div>
+        <table class="user-table">
             <thead>
                 <tr>
                     <th>Title</th>
@@ -578,7 +722,7 @@
                             {{ project.title|truncatechars:20 }}
                         </a>
                     </td>
-                    <td>{{ project.project_leader.get_full_name }}</td>
+                    <td><a href="{% url 'user_profile' project.project_leader.id %}" class="name-link">{{ project.project_leader.get_full_name }}</a></td>
                     <td>{% if project.project_leader.college %}{{ project.project_leader.college.name }}{% else %}<em>-</em>{% endif %}</td>
                     <td>{{ project.updated_at|date:"Y-m-d" }}</td>
                     <td>{{ project.start_date|date:"Y-m-d" }}</td>
@@ -591,55 +735,676 @@
             </tbody>
         </table>
 
-        <!-- Goal Section (keep existing goals for VP/Director) -->
-        {% if vpde_content %}
+        {% if vpde_content and dashboard_goals %}
         <div class="goal-section">
-            <div class="goal-text">Goals</div>
-            <div class="goal-card-container">
-            <div class="goal-card">
-                <div class="goal-card-kebab"> <svg class="kebab-svg"><use href="#kebab-icon"/></svg> </div>
-                <div class="goal-card-percent">75%</div>
-                <div class="goal-card-title">100 Extension Projects for 2025</div>
+            <div class="summary-text" style="margin-top: 20px; margin-bottom: 15px;">Goals</div>
+            <div class="goal-card-container" id="goalCardContainer">
+            {% for goal in dashboard_goals|slice:":4" %}
+                <div class="goal-card-simple-dashboard" onclick="window.location.href='/goals/'" 
+                     style="--progress: {{ goal.progress }}%; --goal-index: {{ forloop.counter0 }}">
+                    
+                    <div class="goal-card-title-simple" style="color: #1f2937; margin-bottom: 20px;">
+                        {{ goal.title|truncatechars:35 }}
+                    </div>
+                    
+                    <div class="goal-card-data-wrapper">
+                        
+                        <div class="goal-card-percent-wrapper">
+                            <div class="goal-card-number">{{ goal.current_qualifiers }}</div>
+                            <div class="goal-card-denominator">
+                                <span class="label">OUT OF</span>
+                                <span class="word-number">{{ goal.target_words }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+            {% endfor %}
             </div>
-            <div class="goal-card">
-                <div class="goal-card-kebab"> <svg class="kebab-svg"><use href="#kebab-icon"/></svg> </div>
-                <div class="goal-card-percent">30%</div>
-                <div class="goal-card-title">10 SDG Extension Projects for 2025</div>
-            </div>
-            <div class="goal-card">
-                <div class="goal-card-kebab"> <svg class="kebab-svg"><use href="#kebab-icon"/></svg> </div>
-                <div class="goal-card-percent">90%</div>
-                <div class="goal-card-title">5 Student Involved Extension Projects for 2025</div>
-            </div>
-            <div class="goal-card">
-                <div class="goal-card-kebab"> <svg class="kebab-svg"><use href="#kebab-icon"/></svg> </div>
-                <div class="goal-card-percent">50%</div>
-                <div class="goal-card-title">10 Eco-Tourism Projects for 2025</div>
-            </div>
-            </div>
+        </div>
+        {% elif vpde_content and not dashboard_goals %}
+        <div class="goal-section">
+            <div class="summary-text" style="margin-top: 20px; margin-bottom: 15px;">Goals</div>
+            <p style="padding: 1rem 0; color: #6b7280;">No goals defined yet. <a href="/goals/add/" style="color: #00681a;">Add your first goal</a>.</p>
         </div>
         {% endif %}
 </body>
 
 </div>
-<!-- SVG Sprite Section -->
 <svg style="display:none;">
 
-    <!-- Expand -->
     <symbol id="icon-expand" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M15.35 5.43923V1M15.35 1H10.8656M15.35 1L9.96875 6.26404M5.48438 15.2055L1 15.226V10.7663M6.38125 9.87846L1 15.2055" stroke="black" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
 
-    <!-- Dropdown -->
     <symbol id="icon-dropdown" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <polyline points="4,6 8,10 12,6" fill="none" stroke="#000" stroke-width="2"/>
+        <polyline points="4,6 8,10 12,6" fill="none" stroke="currentColor" stroke-width="2"/>
     </symbol>
 
-    <!-- Kebab -->
     <symbol id="kebab-icon" viewBox="0 0 4 16" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M2 16C1.45 16 0.979167 15.8042 0.5875 15.4125C0.195833 15.0208 0 14.55 0 14C0 13.45 0.195833 12.9792 0.5875 12.5875C0.979167 12.1958 1.45 12 2 12C2.55 12 3.02083 12.1958 3.4125 12.5875C3.80417 12.9792 4 13.45 4 14C4 14.55 3.80417 15.0208 3.4125 15.4125C3.02083 15.8042 2.55 16 2 16ZM2 10C1.45 10 0.979167 9.80417 0.5875 9.4125C0.195833 9.02083 0 8.55 0 8C0 7.45 0.195833 6.97917 0.5875 6.5875C0.979167 6.19583 1.45 6 2 6C2.55 6 3.02083 6.19583 3.4125 6.5875C3.80417 6.97917 4 7.45 4 8C4 8.55 3.80417 9.02083 3.4125 9.4125C3.02083 9.80417 2.55 10 2 10ZM2 4C1.45 4 0.979167 3.80417 0.5875 3.4125C0.195833 3.02083 0 2.55 0 2C0 1.45 0.195833 0.979167 0.5875 0.5875C0.979167 0.195833 1.45 0 2 0C2.55 0 3.02083 0.195833 3.4125 0.5875C3.80417 0.979167 4 1.45 4 2C4 2.55 3.80417 3.02083 3.4125 3.4125C3.02083 3.80417 2.55 4 2 4Z" fill="#1D1B20"/>
     </symbol>
 </svg>
+
+
+<script>
+    // Notification Popup Logic
+    function closeNotificationPopup() {
+        const popup = document.getElementById('notificationPopup');
+        if (popup) {
+            popup.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => {
+                popup.style.display = 'none';
+            }, 300);
+        }
+    }
+
+    function toggleReminderDropdown(dropdownId, ev) {
+        if (ev) ev.stopPropagation();
+        const dropdown = document.getElementById(dropdownId);
+        if (!dropdown) return;
+        const isOpen = dropdown.style.display === 'block';
+        dropdown.style.display = isOpen ? 'none' : 'block';
+    }
+
+    function closeDashboardCardPopup() {
+        const popup = document.getElementById('dashboardCardPopup');
+        if (popup) {
+            popup.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => {
+                popup.style.display = 'none';
+            }, 300);
+        }
+    }
+
+    function openDashboardCardPopup(title, sectionId, ev) {
+        if (ev) ev.preventDefault();
+        const popup = document.getElementById('dashboardCardPopup');
+        const titleEl = document.getElementById('dashboardCardPopupTitle');
+        if (!popup || !titleEl) return;
+
+        titleEl.textContent = title;
+        const sections = popup.querySelectorAll('[data-dashboard-card-section]');
+        sections.forEach(sec => { sec.style.display = 'none'; });
+        const target = document.getElementById(sectionId);
+        if (target) target.style.display = 'block';
+
+        popup.style.display = 'flex';
+        popup.style.animation = 'fadeIn 0.3s ease';
+    }
+    
+    function openNotificationPopup() {
+        const popup = document.getElementById('notificationPopup');
+        if (popup) {
+            popup.style.display = 'flex';
+            popup.style.animation = 'fadeIn 0.3s ease';
+        }
+    }
+    
+    // Show popup only when coming from login (flag) or when View Reminders is clicked
+    document.addEventListener('DOMContentLoaded', function() {
+        const popup = document.getElementById('notificationPopup');
+        const dashboardCardPopup = document.getElementById('dashboardCardPopup');
+        const viewRemindersBtn = document.getElementById('viewRemindersBtn');
+        const backToTopBtn = document.getElementById('backToTopBtn');
+
+        // Helper: check if there are any notification items
+        function hasReminders() {
+            return popup && popup.querySelector('.notification-item') !== null;
+        }
+
+        // Only show popup automatically ONCE if flag is set (from login/quick-login)
+        let popupAutoShown = false;
+        if (popup && hasReminders()) {
+            const showFromContext = "{{ show_notifications|yesno:'true,false' }}" === "true";
+            const urlParams = new URLSearchParams(window.location.search);
+            const showFromUrl = urlParams.get('reminders') === '1';
+            
+            if (showFromContext || showFromUrl) {
+                popup.style.display = 'flex';
+                popupAutoShown = true;
+                // Click outside to close (on overlay)
+                popup.addEventListener('mousedown', function(e) {
+                    if (e.target === popup) {
+                        closeNotificationPopup();
+                    }
+                });
+                // Remove the URL parameter to avoid showing again on refresh
+                if (showFromUrl) {
+                    const newUrl = window.location.pathname + window.location.hash;
+                    window.history.replaceState({}, document.title, newUrl);
+                }
+            } else {
+                popup.style.display = 'none';
+            }
+        }
+
+        // Always allow clicking overlay to close popup
+        if (popup) {
+            popup.addEventListener('mousedown', function(e) {
+                if (e.target === popup) {
+                    closeNotificationPopup();
+                }
+            });
+        }
+
+        if (dashboardCardPopup) {
+            dashboardCardPopup.addEventListener('mousedown', function(e) {
+                if (e.target === dashboardCardPopup) {
+                    closeDashboardCardPopup();
+                }
+            });
+        }
+
+        // View Reminders pill logic
+        if (viewRemindersBtn) {
+            viewRemindersBtn.addEventListener('click', function() {
+                if (popup && hasReminders()) {
+                    popup.style.display = 'flex';
+                    popup.style.animation = 'fadeIn 0.3s ease';
+                }
+            });
+            function toggleViewReminders() {
+                const reminders = hasReminders();
+                const scrolled = window.scrollY > 300;
+                if (reminders) {
+                    if (scrolled) {
+                        viewRemindersBtn.classList.remove('show');
+                        if (backToTopBtn) backToTopBtn.classList.add('show');
+                    } else {
+                        viewRemindersBtn.classList.add('show');
+                        if (backToTopBtn) backToTopBtn.classList.remove('show');
+                    }
+                } else {
+                    viewRemindersBtn.classList.remove('show');
+                }
+            }
+            window.addEventListener('scroll', toggleViewReminders);
+            toggleViewReminders();
+        }
+        if (backToTopBtn) {
+            backToTopBtn.addEventListener('click', function() {
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+            });
+        }
+    });
+
+    const CARD_BACKGROUND_COLORS = [
+        '#E0F7FA', // Very Light Cyan/Blue (Similar to your lightest)
+        '#B3E5FC', // Pale Sky Blue
+        '#81D4FA', // Medium Light Blue
+        '#4FC3F7', // Medium Blue
+    ];
+
+    // --- Utility to lighten a color (takes hex and percent) ---
+    function lightenColor(hex, percent) {
+        hex = hex.replace('#', '');
+        let R = parseInt(hex.substring(0, 2), 16);
+        let G = parseInt(hex.substring(2, 4), 16);
+        let B = parseInt(hex.substring(4, 6), 16);
+
+        const amount = Math.floor(2.55 * percent);
+        const maxVal = 240; // Stop just short of F0
+
+        R = Math.min(maxVal, R + amount);
+        G = Math.min(maxVal, G + amount);
+        B = Math.min(maxVal, B + amount);
+
+        const r = R.toString(16).padStart(2, '0');
+        const g = G.toString(16).padStart(2, '0');
+        const b = B.toString(16).padStart(2, '0');
+
+        return `#${r}${g}${b}`;
+    }
+
+    // Function to assign background colors and gradient CSS variables
+    function applyGoalBackgroundsSimple() {
+        const container = document.getElementById('goalCardContainer');
+        if (!container) return;
+
+        const cards = container.querySelectorAll('.goal-card-simple-dashboard');
+        
+        cards.forEach((card, index) => {
+            // Use index % 4 to cycle through the 4 colors (1, 2, 3, 4)
+            const colorIndex = index % CARD_BACKGROUND_COLORS.length; 
+            const baseColor = CARD_BACKGROUND_COLORS[colorIndex];
+            
+            // Calculate a slightly lighter color for the gradient start
+            // This creates the "light shade then gets darker" effect.
+            const startColor = lightenColor(baseColor, 10); 
+            
+            // Set CSS variables for gradient colors
+            card.style.setProperty('--card-bg', baseColor);
+            card.style.setProperty('--card-start-bg', startColor);
+        });
+    }
+
+    const EVENTS_DATA = JSON.parse(`{{ events_json|default:'{}'|escapejs }}`); 
+    
+    // The rest of the calendar script goes here:
+    
+    (function() {
+        // Use a set for quick date lookup
+        const eventDates = new Set();
+        if (EVENTS_DATA && typeof EVENTS_DATA === 'object') {
+            Object.keys(EVENTS_DATA).forEach(date => eventDates.add(date));
+        }
+
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        let currentDate = new Date();
+
+        const headerEl = document.querySelector('.current-month-year');
+        const daysGridEl = document.querySelector('.days-grid');
+        const prevButton = document.querySelector('.prev-month');
+        const nextButton = document.querySelector('.next-month');
+        
+        function renderCalendar() {
+            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getMonth();
+            
+            headerEl.textContent = `${monthNames[currentMonth]} ${currentYear}`;
+            daysGridEl.innerHTML = ''; 
+
+            const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0 (Sun) - 6 (Sat)
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            const today = new Date();
+            
+            // Render empty cells for preceding month days
+            for (let i = 0; i < firstDayOfMonth; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.classList.add('day-cell', 'empty-day');
+                daysGridEl.appendChild(emptyCell);
+            }
+
+            // Render days of the month
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayCell = document.createElement('div');
+                dayCell.classList.add('day-cell');
+                dayCell.textContent = day;
+
+                const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                
+                // Mark today's date
+                if (currentYear === today.getFullYear() && currentMonth === today.getMonth() && day === today.getDate()) {
+                    dayCell.classList.add('today');
+                }
+                
+                // Mark event dates
+                if (eventDates.has(dateString)) {
+                    dayCell.classList.add('has-event');
+                    // Add an invisible link/data for utility, pointing to the full calendar view
+                    dayCell.setAttribute('data-event-date', dateString);
+                    dayCell.title = "Events scheduled today. Click for full calendar."
+                }
+                
+                // Navigation to the full calendar view (assuming URL is /calendar/)
+                dayCell.addEventListener('click', () => {
+                     if (!dayCell.classList.contains('empty-day')) {
+                        const targetDate = dayCell.getAttribute('data-event-date') || dateString;
+                        window.location.href = `/calendar/?date=${targetDate}`;
+                     }
+                });
+
+
+                daysGridEl.appendChild(dayCell);
+            }
+        }
+
+        prevButton.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
+        });
+
+        nextButton.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        });
+
+        // Initial render
+        renderCalendar();
+    })();
+
+</script>
+
+ 
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // Apply backgrounds after content is rendered
+    applyGoalBackgroundsSimple(); 
+
+    // --- 1. Define chart variables ---
+    let submissionChart = null;
+    let projectChart = null;
+    
+    // --- 2. Reusable hover function ---
+    const customOnHover = (event, chartElement) => {
+        const canvas = event.native.target;
+        if (chartElement.length > 0) {
+            canvas.style.cursor = 'pointer';
+        } else {
+            canvas.style.cursor = 'default';
+        }
+    };
+
+    // --- 3. The "Master Function" ---
+    function updateDashboard(startStr, endStr) {
+        
+        console.log(`Updating dashboard for: ${startStr || 'default'} to ${endStr || 'default'}`);
+
+        const subApiUrl = `/dashboard/api/chart/submission-status/?start=${startStr}&end=${endStr}`;
+        const projApiUrl = `/dashboard/api/chart/project-status/?start=${startStr}&end=${endStr}`;
+
+        // -----------------------------------------------------------------
+        // Chart 1: Submission Status Breakdown
+        // -----------------------------------------------------------------
+        const subCanvas = document.getElementById('submissionStatusChart');
+        if (!subCanvas) return;
+        const subCtx = subCanvas.getContext('2d');
+        
+        fetch(subApiUrl)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                if (submissionChart) {
+                    submissionChart.destroy();
+                }
+                
+                submissionChart = new Chart(subCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            label: 'Number of Submissions',
+                            data: data.counts,
+                            backgroundColor: [
+                                'rgba(255, 99, 132, 0.6)', 'rgba(54, 162, 235, 0.6)', 
+                                'rgba(255, 206, 86, 0.6)', 'rgba(75, 192, 192, 0.6)', 
+                                'rgba(153, 102, 255, 0.6)', 'rgba(255, 159, 64, 0.6)'
+                            ],
+                            borderColor: [
+                                'rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)',
+                                'rgba(255, 206, 86, 1)', 'rgba(75, 192, 192, 1)',
+                                'rgba(153, 102, 255, 1)', 'rgba(255, 159, 64, 1)'
+                            ],
+                            borderWidth: 1,
+                            hoverBackgroundColor: [
+                                'rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)',
+                                'rgba(255, 206, 86, 1)', 'rgba(75, 192, 192, 1)',
+                                'rgba(153, 102, 255, 1)', 'rgba(255, 159, 64, 1)'
+                            ],
+                            hoverBorderColor: [
+                                'rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)',
+                                'rgba(255, 206, 86, 1)', 'rgba(75, 192, 192, 1)',
+                                'rgba(153, 102, 255, 1)', 'rgba(255, 159, 64, 1)'
+                            ],
+                            hoverBorderWidth: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',  
+                        onHover: customOnHover,
+                        scales: { x: { beginAtZero: true }, y: { ticks: { display: false } } },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            })
+            .catch(error => console.error('Error fetching submission chart data:', error));
+
+        // -----------------------------------------------------------------
+        // Chart 2: Project Status Overview
+        // -----------------------------------------------------------------
+        const projCanvas = document.getElementById('projectStatusChart');
+        if (!projCanvas) return;
+        const projCtx = projCanvas.getContext('2d');
+
+        fetch(projApiUrl)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                if (projectChart) {
+                    projectChart.destroy();
+                }
+                
+                const pieColors = [
+                    'rgba(255, 99, 132, 0.7)',  'rgba(54, 162, 235, 0.7)',
+                    'rgba(75, 192, 192, 0.7)', 'rgba(255, 206, 86, 0.7)',
+                    'rgba(153, 102, 255, 0.7)'
+                ];
+                const pieHoverColors = [
+                    'rgba(255, 119, 152, 1)', 'rgba(74, 182, 255, 1)',
+                    'rgba(95, 212, 212, 1)', 'rgba(255, 216, 106, 1)',
+                    'rgba(173, 122, 255, 1)'
+                ];
+                
+                projectChart = new Chart(projCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            label: 'Project Status',
+                            data: data.counts,
+                            backgroundColor: pieColors,
+                            hoverBackgroundColor: pieHoverColors,
+                            hoverOffset: 20,
+                            hoverBorderColor: '#fff',
+                            hoverBorderWidth: 5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        onHover: customOnHover,
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            })
+            .catch(error => console.error('Error fetching project chart data:', error));
+    }
+
+    // --- 4. NEW: Logic for your Custom Popup (with Button Text) ---
+    
+    const openBtn = document.getElementById('dateRangeBtn');
+    const dateRangeLabel = document.getElementById('dateRangeLabel');
+    const overlay = document.getElementById('popupOverlay');
+    const popup = document.getElementById('datePopup');
+    const confirmBtn = document.getElementById('confirmExport');
+    const cancelBtn = document.getElementById('cancelExport');
+    
+    if (openBtn && overlay && popup && confirmBtn && cancelBtn) {
+        
+        // Helper function to format YYYY-MM-DD to "Mmm D, YYYY"
+        const formatDate = (dateStr) => {
+            if (!dateStr) return null;
+            const [year, month, day] = dateStr.split('-');
+            const date = new Date(year, month - 1, day);
+            return date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric', 
+                year: 'numeric' 
+            });
+        };
+
+        const showPopup = (show) => {
+            if (show) {
+                overlay.style.display = 'flex';
+                setTimeout(() => {
+                    popup.classList.add('show');
+                }, 10);
+            } else {
+                popup.classList.remove('show');
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                }, 250);
+            }
+        };
+
+        openBtn.addEventListener('click', () => {
+            showPopup(true);
+        });
+        
+        cancelBtn.addEventListener('click', () => {
+            showPopup(false);
+        });
+        
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) {
+                showPopup(false);
+            }
+        });
+        
+        // 'Confirm' button logic is updated
+        confirmBtn.addEventListener('click', () => {
+            const startStr = document.getElementById('startDate').value;
+            const endStr = document.getElementById('endDate').value;
+            
+            // --- NEW: Update Button Text ---
+            const formattedStart = formatDate(startStr);
+            const formattedEnd = formatDate(endStr);
+            
+            if (dateRangeLabel) {
+                if (formattedStart && formattedEnd) {
+                    dateRangeLabel.textContent = `${formattedStart} - ${formattedEnd}`;
+                } else if (formattedStart) {
+                    dateRangeLabel.textContent = `From ${formattedStart}`;
+                } else if (formattedEnd) {
+                    dateRangeLabel.textContent = `Until ${formattedEnd}`;
+                } else {
+                    dateRangeLabel.textContent = 'All Time (Default)';
+                }
+            }
+            
+            updateDashboard(startStr, endStr);
+            showPopup(false);
+        });
+    }
+
+    updateDashboard('', ''); 
+    if (dateRangeLabel) dateRangeLabel.textContent = 'Last 300 Days';
+    
+});
+</script>
+ 
+<script> 
+    const openBtn = document.getElementById('dateRangeBtn');
+    const dateRangeLabel = document.getElementById('dateRangeLabel');
+    const overlay = document.getElementById('popupOverlay');
+    const popup = document.getElementById('datePopup');
+    const confirmBtn = document.getElementById('confirmExport');
+    const cancelBtn = document.getElementById('cancelExport');
+    
+    // Get the date input elements
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    
+    if (openBtn && overlay && popup && confirmBtn && cancelBtn && startDateInput && endDateInput) {
+        
+        // --- NEW: Date Validation Logic ---
+        startDateInput.addEventListener('change', () => {
+            // When start date changes, end date cannot be before it
+            if (startDateInput.value) {
+                endDateInput.min = startDateInput.value;
+            }
+        });
+        
+        endDateInput.addEventListener('change', () => {
+            // When end date changes, start date cannot be after it
+            if (endDateInput.value) {
+                startDateInput.max = endDateInput.value;
+            }
+        });
+        // --- End of New Logic ---
+
+        const showPopup = (show) => {
+            if (show) {
+                overlay.style.display = 'flex';
+                setTimeout(() => {
+                    popup.classList.add('show');
+                }, 10);
+            } else {
+                popup.classList.remove('show');
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    // Clear min/max on close so it resets for next time
+                    startDateInput.max = '';
+                    endDateInput.min = '';
+                }, 250); // Matches your CSS transition time
+            }
+        };
+
+        openBtn.addEventListener('click', () => {
+            showPopup(true);
+        });
+        
+        cancelBtn.addEventListener('click', () => {
+            showPopup(false);
+        });
+        
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) {
+                showPopup(false);
+            }
+        });
+        
+        confirmBtn.addEventListener('click', () => {
+            const startStr = startDateInput.value;
+            const endStr = endDateInput.value;
+            
+            // Helper function to format YYYY-MM-DD to "Mmm D, YYYY"
+            const formatDate = (dateStr) => {
+                if (!dateStr) return null;
+                // Add a check for invalid date string
+                const date = new Date(dateStr + 'T00:00:00'); // Use T00:00:00 to avoid timezone issues
+                if (isNaN(date)) return null;
+                return date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric', 
+                    year: 'numeric',
+                    timeZone: 'UTC' // Ensure consistent formatting
+                });
+            };
+            
+            const formattedStart = formatDate(startStr);
+            const formattedEnd = formatDate(endStr);
+            
+            if (dateRangeLabel) {
+                if (formattedStart && formattedEnd) {
+                    dateRangeLabel.textContent = `${formattedStart} - ${formattedEnd}`;
+                } else if (formattedStart) {
+                    dateRangeLabel.textContent = `From ${formattedStart}`;
+                } else if (formattedEnd) {
+                    dateRangeLabel.textContent = `Until ${formattedEnd}`;
+                } else {
+                    // Keep the default text if no dates are set
+                    dateRangeLabel.textContent = 'Last 300 Days';
+                }
+            }
+            
+            // Assuming updateDashboard is defined in the script above
+            updateDashboard(startStr, endStr);
+            showPopup(false);
+        });
+    }
+
+    // --- 5. Initial Load ---
+    // Load with defaults and set button text
+    // The call to updateDashboard is already in the first script, 
+    // but the button text needs to be set if it wasn't done already.
+    if (openBtn) {
+        if (dateRangeLabel) dateRangeLabel.textContent = 'Last 300 Days';
+    }
+</script> 
+
+
 
 </body>
 </html>

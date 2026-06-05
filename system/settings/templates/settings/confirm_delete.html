@@ -1,0 +1,55 @@
+{% extends base_template %}
+{% load static %}
+
+{% block title %}Confirm Action{% endblock %}
+
+{% block content %}
+<link href="{% static 'system/settings/styles.css' %}" rel="stylesheet">
+
+<div class="main-container">
+    <h1 class="project-text">Confirm Action</h1>
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card" id="danger-zone">
+                <div class="card-header">
+                    <h6 class="m-0 text-danger accordion-title">Warning</h6>
+                </div>
+                <div class="card-body">
+                    <p><strong>{{ confirm_message|default:"Are you sure you want to do this?" }}</strong></p>
+
+                    {% if object_to_delete %}
+                    <div class="alert alert-secondary">
+                        <strong>{{ object_to_delete }}</strong>
+
+                        {% if object_to_delete.description %}
+                        <hr style="border-top: 1px solid #c8c8c8; margin: 10px 0;">
+                        <small class="d-block text-muted mb-1" style="font-weight: 600;">Description:</small>
+                        <div style="font-weight: normal; font-size: 0.95rem; white-space: pre-wrap;">{{ object_to_delete.description }}</div>
+                        {% endif %}
+
+                        {% if object_to_delete.get_tier_display %}
+                        <hr style="border-top: 1px solid #c8c8c8; margin: 10px 0;">
+                        <small class="d-block text-muted mb-1" style="font-weight: 600;">Requested Tier:</small>
+                        <div style="font-weight: bold; font-size: 0.95rem;">{{ object_to_delete.get_tier_display }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="d-flex justify-content-end fortwo">
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-check" style="margin-right: 0.5rem;"></i>
+                                {{ confirm_button_text|default:"Yes, Confirm" }}
+                            </button>
+                            <a href="{% if cancel_url %}{{ cancel_url }}{% else %}javascript:history.back(){% endif %}"
+                                class="btn gray">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,6 +1,6 @@
 {% extends "base_internal.html" %}
 {% block content %}
-
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,489 +8,153 @@
 <title>Add User</title>
 
 <link href="https://fonts.googleapis.com/css?family=Inter:400,500,700&display=swap" rel="stylesheet">
-
-<style>
-    .success-message {
-		color: green; 
-		margin-bottom: 1rem;
-	}
-
-    .error-input {
-        border-color: #E53E3E !important;
-        background: #FFF5F5 !important;
-    }
-
-    .error-select {
-        border-color: #E53E3E !important;
-        background: 
-            #FFF5F5 /* background color */
-            url("data:image/svg+xml;utf8,<svg width='16' height='11' viewBox='0 0 16 11' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M7.99976 7.19417L13.9025 1.29147C14.0125 1.17758 14.144 1.08674 14.2895 1.02424C14.435 0.961746 14.5915 0.92885 14.7498 0.927474C14.9082 0.926098 15.0652 0.95627 15.2117 1.01623C15.3583 1.07619 15.4914 1.16473 15.6034 1.27669C15.7153 1.38866 15.8039 1.5218 15.8638 1.66835C15.9238 1.8149 15.954 1.97192 15.9526 2.13026C15.9512 2.28859 15.9183 2.44506 15.8558 2.59055C15.7933 2.73604 15.7025 2.86762 15.5886 2.97762L8.84283 9.72339C8.61921 9.94694 8.31596 10.0725 7.99976 10.0725C7.68356 10.0725 7.38031 9.94694 7.15669 9.72339L0.41092 2.97762C0.297028 2.86762 0.206183 2.73604 0.143687 2.59055C0.0811915 2.44506 0.0482959 2.28859 0.04692 2.13026C0.0455441 1.97192 0.0757155 1.8149 0.135674 1.66835C0.195632 1.5218 0.284176 1.38866 0.39614 1.27669C0.508103 1.16473 0.641244 1.07619 0.787794 1.01623C0.934343 0.95627 1.09137 0.926098 1.2497 0.927474C1.40804 0.92885 1.56451 0.961746 1.71 1.02424C1.85548 1.08674 1.98706 1.17758 2.09706 1.29147L7.99976 7.19417Z' fill='%23374151'/></svg>") 
-            no-repeat right 0.75rem center !important;
-    }
-
-    body {
-        background: #F9F9F9;
-        margin: 0;
-        font-family: 'Inter', Arial, sans-serif;
-    }
-
-    input, select, textarea {
-        font-family: 'Inter', Arial, sans-serif;
-        font-weight: 400;
-    }
-
-    .user-details-container {
-        margin: 60px;
-        display: flex;
-        flex-direction: column;
-        gap: 32px;
-    }
-
-    .user-details-title {
-        font-size: 32px;
-        font-weight: 400;
-        color: #000;
-        font-family: 'Inter', Arial, sans-serif;
-    }
-
-    .user-details-section {
-        padding-bottom: 16px;
-        border-bottom: 1px solid #E5E7EB;
-    }
-
-    .user-details-grid {
-        display: grid;
-        gap: 20px;
-    }
-
-    .user-details-row {
-        display: grid;
-        gap: 20px;
-    }
-
-    .user-details-row.cols-4 {
-        grid-template-columns: repeat(4, 1fr);
-    }
-    
-    .user-details-row.cols-3 {
-        grid-template-columns: repeat(3, 1fr);
-    }
-
-    .user-details-row.cols-2 {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .user-details-category {
-        font-size: 1.15rem;
-        font-weight: 700;
-        color: #000;
-    }
-
-    .user-details-label {
-        font-weight: 500;
-        color: #374151;
-        font-size: 1.08rem;
-        margin-bottom: 0.25rem;
-        margin-top: 1rem;
-    }
-
-    .user-details-value {
-        font-weight: 500;
-        color: #374151;
-        font-size: 1.08rem;
-        word-break: break-word;
-        background: #f7f7f7;
-        border-radius: 0.5rem;
-        padding: 8px 14px;
-        border: 1px solid #e5e7eb;
-        min-height: 21px;
-        display: block;
-        width: 100%;
-        box-sizing: border-box;
-    }
-
-    select.user-details-value {
-		appearance: none;
-		-webkit-appearance: none;
-		-moz-appearance: none;
-		padding-right: 2rem;
-		background: url("data:image/svg+xml;utf8,<svg width='16' height='11' viewBox='0 0 16 11' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M7.99976 7.19417L13.9025 1.29147C14.0125 1.17758 14.144 1.08674 14.2895 1.02424C14.435 0.961746 14.5915 0.92885 14.7498 0.927474C14.9082 0.926098 15.0652 0.95627 15.2117 1.01623C15.3583 1.07619 15.4914 1.16473 15.6034 1.27669C15.7153 1.38866 15.8039 1.5218 15.8638 1.66835C15.9238 1.8149 15.954 1.97192 15.9526 2.13026C15.9512 2.28859 15.9183 2.44506 15.8558 2.59055C15.7933 2.73604 15.7025 2.86762 15.5886 2.97762L8.84283 9.72339C8.61921 9.94694 8.31596 10.0725 7.99976 10.0725C7.68356 10.0725 7.38031 9.94694 7.15669 9.72339L0.41092 2.97762C0.297028 2.86762 0.206183 2.73604 0.143687 2.59055C0.0811915 2.44506 0.0482959 2.28859 0.04692 2.13026C0.0455441 1.97192 0.0757155 1.8149 0.135674 1.66835C0.195632 1.5218 0.284176 1.38866 0.39614 1.27669C0.508103 1.16473 0.641244 1.07619 0.787794 1.01623C0.934343 0.95627 1.09137 0.926098 1.2497 0.927474C1.40804 0.92885 1.56451 0.961746 1.71 1.02424C1.85548 1.08674 1.98706 1.17758 2.09706 1.29147L7.99976 7.19417Z' fill='%23374151'/></svg>")
-        		no-repeat right 0.75rem center;
-  		background-size: 13px 8px;
-    }
-
-    .user-details-picture {
-        width: 80px;
-        height: 80px;
-        border: 2px solid #000;
-        object-fit: cover;
-        margin-left: 12px;
-    }
-
-	.form-actions {
-		display: flex;
-		gap: 1rem;
-		justify-content: flex-end;
-	}
-
-    .btn {
-		padding: 0.75rem 1.5rem;
-		border: none;
-		border-radius: 8px;
-		font-size: 1rem;
-		font-weight: 600;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		font-family: 'Inter', sans-serif;
-        text-decoration: none;
-    }
-
-    .back {
-		background: #6B7280;
-		color: white;
-    }
-
-    .back:hover {
-		background: #4B5563;
-		transform: translateY(-1px);
-    }
-
-    .save {
-		background: #0A6C44;
-		color: white;
-    }
-
-    .save:hover {
-		background: #1f7c57;
-		transform: translateY(-1px);
-    }
-</style>
-
-<style>
-    .form-group {
-        margin-top: 1rem;
-        margin-bottom: 1rem;
-		display: flex;
-		align-items: flex-start;
-		gap: 1rem;
-	}
-
-	.form-label {
-		font-weight: 600;
-		color: #374151;
-		padding-top: 0.75rem;
-		font-size: 0.95rem;
-	}
-
-	.upload-area {
-		flex: 1;
-		border: 2px dashed #E5E7EB;
-		border-radius: 8px;
-		padding: 2rem;
-		text-align: center;
-		background: #F9F9F9;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-    .upload-area:hover {
-        border-color: #0A6C44;
-        background: #F0FDF4;
-    }
-
-    .upload-icon {
-        width: 24px;
-        height: 24px;
-        color: #4B5563;
-    }
-
-    .upload-text {
-        color: #4B5563;
-        font-size: 0.95rem;
-    }
-
-    .file-preview {
-        margin-top: 1rem;
-        padding: 1rem;
-        background: #F0FDF4;
-        border: 1px solid #BBF7D0;
-        border-radius: 8px;
-        display: none;
-    }
-
-    .file-info {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        color: #1f7c57;
-        font-size: 0.95rem;
-    }
-
-    span.required {
-        color: #e53e3e;
-    }
-
-    .error-message {
-        color: #e53e3e;
-        font-size: 0.9rem;
-        margin-top: 0.25rem;
-        margin-bottom: 0.5rem;
-    }
-</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link href="{% static 'shared/projects/styles.css' %}" rel="stylesheet">
 
 </head>
 
 <body>
-<form method="post" enctype="multipart/form-data" id="addUserForm">
+<div class="content-wrapper-fix"> <form method="post" enctype="multipart/form-data" id="addUserForm" novalidate>
     {% csrf_token %}
     <div class="user-details-container">
-        <div class="user-details-title" style="display:flex;flex-direction:column;gap:8px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span>Add User</span>
-            </div>
+        <div class="user-details-title">
+            <h2>Create New User</h2> 
+            <p>Input all fields appropriately and create a user.</p>
         </div>
 
-        {% if success %}
-        <div id="add-success-msg" style="color:#16a34a;font-size:1.1rem;font-weight:500;">User added successfully.</div>
-        {% endif %}
-
-        <!-- User Details Section -->
         <div class="user-details-section">
-            <div class="user-details-category">User Profile</div>
+            <div class="user-details-category">  
+                <i class="fa-regular fa-user"></i>
+                User Profile              
+            </div>
+            
+            <div class="profile-picture-circle-container">
+                <label for="profile_picture_input" class="profile-picture-upload-area" id="upload-label-pp">
+                    <img id="profile-picture-preview-img" class="profile-picture-preview" alt="Profile Preview">
+                    <i id="profile-picture-icon" class="fa-solid fa-camera profile-picture-icon"></i>
+                </label>
+                <div class="file-upload-info">Click to upload (JPG, PNG)</div>
+                <input 
+                    class="hidden" 
+                    type="file" 
+                    name="profile_picture" 
+                    id="profile_picture_input" 
+                    accept="image/jpeg,image/png"
+                    data-optional 
+                    onchange="displayProfilePicture(this)">
+            </div>
             <div class="user-details-row cols-4">
                 <div>
                     <div class="user-details-label">Last Name <span class="required">*</span></div>
-                    <input type="text" name="last_name" class="user-details-value" value="">
+                    <input type="text" name="last_name" class="form-input" value="" required>
                 </div>
                 <div>
                     <div class="user-details-label">Given Name <span class="required">*</span></div>
-                    <input type="text" name="given_name" class="user-details-value" value="">
+                    <input type="text" name="given_name" class="form-input" value="" required>
                 </div>
                 <div>
                     <div class="user-details-label">M.I.</div>
-                    <input type="text" name="middle_initial" class="user-details-value" value="" data-optional>
+                    <input type="text" name="middle_initial" class="form-input" value="" data-optional>
                 </div>
                 <div>
                     <div class="user-details-label">Suffix</div>
-                    <input type="text" name="suffix" class="user-details-value" value="" data-optional>
+                    <input type="text" name="suffix" class="form-input" value="" data-optional>
                 </div>
             </div>
             <div class="user-details-row cols-3">
                 <div>
                     <div class="user-details-label">Sex <span class="required">*</span></div>
-                    <select name="sex" class="user-details-value">
+                    <select name="sex" class="user-details-value" style="transition: none;" required>
                         <option value="" selected disabled>Select Sex</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
+                        <option value="MALE">Male</option>
+                        <option value="FEMALE">Female</option>
                     </select>
                 </div>
                 <div>
                     <div class="user-details-label">Email <span class="required">*</span></div>
-                    <input type="email" name="email" class="user-details-value" value="" id="email-input">
+                    <input type="email" name="email" class="form-input" value="" id="email-input" required>
                     <div id="email-error" class="error-message"></div>
                 </div>
                 <div>
                     <div class="user-details-label">Contact Number <span class="required">*</span></div>
-                    <input type="text" name="contact_no" class="user-details-value" value="">
+                    <input type="text" name="contact_no" class="form-input" value="" id="id_contact_no" required>
                 </div>
-            </div>
-            <div>
-
-                <!-- Valid ID Upload -->
-                <div class="form-group">
-                    <div class="user-details-label">Valid ID</div>
-                    <div class="upload-area" onclick="document.getElementById('id_valid_id').click()">
-                        <svg class="upload-icon"><use href="#icon-upload"></use></svg>
-                        <span class="upload-text">Click to upload</span>
-                        <input class="file-input" type="file" name="valid_id" id="id_valid_id" style="display:none;" accept="*/*">
-                    </div>
-                </div>
-                <div class="file-preview" id="file-preview">
-                    <div class="file-info">
-                        <svg width="16" height="16"><use href="#icon-upload"></use></svg>
-                        <span id="file-name"></span>
-                    </div>
-                </div>
-
             </div>
         </div>
 
-        <!-- Account Info Section -->
         <div class="user-details-section">
-            <div class="user-details-category">Account Info</div>
+            <div class="user-details-category">  
+                <i class="fa-solid fa-key"></i>
+                Account Info 
+            </div>
             <div class="user-details-row cols-2">
                 <div>
                     <div class="user-details-label">Role <span class="required">*</span></div>
-                    <select name="role" class="user-details-value">
+                    <select name="role" class="user-details-value" style="transition: none;" required>
                         <option value="" selected disabled>Select Role</option>
                         {% for r in roles %}
                         <option value="{{ r.0 }}">{{ r.1 }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div>
+                <div class="form-group">
                     <div class="user-details-label">Password <span class="required">*</span></div>
-                    <input type="password" name="password" class="user-details-value" value="">
+                    <div class="input-group">
+                        <input class="form-input" type="password" name="password" id="id_password" onkeyup="checkPasswordStrength();" required>
+                        <span class="input-group-text toggle-password" id="togglePassword">
+                            <i class="fa-solid fa-eye-slash" style="cursor: pointer;"></i>
+                        </span>
+                    </div>
+                    <div class="progress mt-1" style="height: 5px;">
+                        <div id="password-strength-bar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <small id="passwordHelpBlock" class="form-text text-muted" style="font-size: 0.75rem; color: #718096 !important; margin-top: 0.25rem;">
+                        Password must be at least 8 characters long, and include uppercase, lowercase, and a number.
+                    </small>
                 </div>
             </div>
         </div>
 
-        <!-- Implementer Info -->
-        <div id="role-info-IMPLEMENTER" class="role-info-block" {% if user.role == 'IMPLEMENTER' %}style="display:block;"{% else %}style="display:none;"{% endif %}>
-            <div class="user-details-section">
-                <div class="user-details-category">Implementer Info</div>
-                <div class="user-details-row cols-2">
-                    <div>
-                        <div class="user-details-label">Degree <span class="required">*</span></div>
-                        <input type="text" name="degree" class="user-details-value" value="" data-role-required>
-                    </div>
-                    <div>
-                        <div class="user-details-label">Expertise <span class="required">*</span></div>
-                        <input type="text" name="expertise" class="user-details-value" value="" data-role-required>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <div class="user-details-section" id="role-specific-section">
+            <div class="user-details-category">Role Specific Information</div>
 
-        <!-- Faculty Info -->
-        <div id="role-info-FACULTY" class="role-info-block" {% if user.role == 'FACULTY' %}style="display:block;"{% else %}style="display:none;"{% endif %}>
-            <div class="user-details-section">
-                <div class="user-details-category">Faculty Info</div>
-                <div class="user-details-row cols-2">
-                    <div>
-                        <div class="user-details-label">College <span class="required">*</span></div>
-                        <select name="college" class="user-details-value" data-role-required>
-                            <option value="">Select College</option>
-                            {% for college in colleges %}
-                                <option value="{{ college.id }}">{{ college.name }}</option>
-                            {% endfor %}
-                        </select>
-                        </select>
-                    </div>
-                    <div>
-                        <div class="user-details-label">Campus <span class="required">*</span></div>
-                        <select name="campus" class="user-details-value" data-role-required>
-                            <option value="">Select Campus</option>
-                            {% for value, label in campus_choices %}
-                                <option value="{{ value }}">{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
+            <div class="user-details-row cols-2">
+                <div>
+                    <div class="user-details-label">College <span class="required">*</span></div>
+                    <select name="college" class="user-details-value" data-role-required style="transition: none;">
+                        <option value="">Select College</option>
+                        {% for college in colleges %}
+                            <option value="{{ college.id }}" {% if user.college.id == college.id %}selected{% endif %}>{{ college.name }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
-                <div class="user-details-row cols-2">
-                    <div>
-                        <div class="user-details-label">Degree <span class="required">*</span></div>
-                        <input type="text" name="degree" class="user-details-value" value="" data-role-required>
-                    </div>
-                    <div>
-                        <div class="user-details-label">Expertise <span class="required">*</span></div>
-                        <input type="text" name="expertise" class="user-details-value" value="" data-role-required>
-                    </div>
+                <div>
+                    <div class="user-details-label">Campus (from College)</div>
+                    <input type="text" name="campus_display" class="form-input" value="Will be determined by College selection" readonly style="background-color: #f8f9fa; cursor: not-allowed;">
                 </div>
             </div>
-        </div>
+            
+            <div class="user-details-row cols-2">
+                <div>
+                    <div class="user-details-label">Degree <span class="required">*</span></div>
+                    <input type="text" name="degree" class="form-input" value="" data-role-required>
+                </div>
+                <div>
+                    <div class="user-details-label">Expertise <span class="required">*</span></div>
+                    <input type="text" name="expertise" class="form-input" value="" data-role-required>
+                </div>
+            </div>
 
-        <!-- Client Info -->
-        <div id="role-info-CLIENT" class="role-info-block" {% if user.role == 'CLIENT' %}style="display:block;"{% else %}style="display:none;"{% endif %}>
-            <div class="user-details-section">
-                <div class="user-details-category">Faculty Info</div>
-                <div class="user-details-row cols-2">
-                    <div>
-                        <div class="user-details-label">Company <span class="required">*</span></div>
-                        <input type="text" name="company" class="user-details-value" value="" data-role-required>
-                    </div>
-                    <div>
-                        <div class="user-details-label">Industry <span class="required">*</span></div>
-                        <input type="text" name="industry" class="user-details-value" value="" data-role-required>
-                    </div>
+            <div class="user-details-row cols-2">
+                <div>
+                    <div class="user-details-label">Company <span class="required">*</span></div>
+                    <input type="text" name="company" class="form-input" value="" data-role-required>
                 </div>
-            </div>
-        </div>
-
-        <!-- Dean Info -->
-        <div id="role-info-DEAN" class="role-info-block" {% if user.role == 'DEAN' %}style="display:block;"{% else %}style="display:none;"{% endif %}>
-            <div class="user-details-section">
-                <div class="user-details-category">Dean Info</div>
-                <div class="user-details-row cols-2">
-                    <div>
-                        <div class="user-details-label">College <span class="required">*</span></div>
-                        <select name="college" class="user-details-value" data-role-required>
-                            <option value="">Select College</option>
-                            {% for college in colleges %}
-                                <option value="{{ college.id }}">{{ college.name }}</option>
-                            {% endfor %}
-                        </select>
-                        </select>
-                    </div>
-                    <div>
-                        <div class="user-details-label">Campus <span class="required">*</span></div>
-                        <select name="campus" class="user-details-value" data-role-required>
-                            <option value="">Select Campus</option>
-                            {% for value, label in campus_choices %}
-                                <option value="{{ value }}">{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
+                <div>
+                    <div class="user-details-label">Industry <span class="required">*</span></div>
+                    <input type="text" name="industry" class="form-input" value="" data-role-required>
                 </div>
-            </div>
-        </div>
-
-        <!-- Program Head Info -->
-        <div id="role-info-PROGRAM_HEAD" class="role-info-block" {% if user.role == 'PROGRAM_HEAD' %}style="display:block;"{% else %}style="display:none;"{% endif %}>
-            <div class="user-details-section">
-                <div class="user-details-category">Program Head Info</div>
-                <div class="user-details-row cols-2">
-                    <div>
-                        <div class="user-details-label">College <span class="required">*</span></div>
-                        <select name="college" class="user-details-value" data-role-required>
-                            <option value="">Select College</option>
-                            {% for college in colleges %}
-                                <option value="{{ college.id }}" {% if user.college and user.college.id == college.id %}selected{% endif %}>{{ college.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div>
-                        <div class="user-details-label">Campus <span class="required">*</span></div>
-                        <select name="campus" class="user-details-value" data-role-required>
-                            <option value="">Select Campus</option>
-                            {% for value, label in campus_choices %}
-                                <option value="{{ value }}" {% if user.campus == value %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Coordinator Info -->
-        <div id="role-info-COORDINATOR" class="role-info-block" {% if user.role == 'COORDINATOR' %}style="display:block;"{% else %}style="display:none;"{% endif %}>
-            <div class="user-details-section">
-                <div class="user-details-category">College Coordinator Info</div>
-                <div class="user-details-row cols-2">
-                    <div>
-                        <div class="user-details-label">College</div>
-                        <select name="college" class="user-details-value" data-role-required>
-                            <option value="">Select College</option>
-                            {% for college in colleges %}
-                                <option value="{{ college.id }}" {% if user.college and user.college.id == college.id %}selected{% endif %}>{{ college.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div>
-                        <div class="user-details-label">Campus</div>
-                        <select name="campus" class="user-details-value" data-role-required>
-                            <option value="">Select Campus</option>
-                            {% for value, label in campus_choices %}
-                                <option value="{{ value }}" {% if user.campus == value %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-            </div>
+            </div> 
         </div>
 
         <div class="form-actions">
@@ -499,156 +163,372 @@
         </div>
     </div>    
 </form>
-
-<!-- SVG Sprite Section -->
-<svg style="display:none;">
-
-    <!-- Upload Icon -->
+</div> <svg style="display:none;">
     <symbol id="icon-upload" viewBox="0 0 24 24" fill="currentColor">
         <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
         <path d="M12,11L8,15H16L12,11Z" />
     </symbol>
-
 </svg>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 
 <script>
-    // File Input Change Handler (robust)
-    document.getElementById('id_valid_id').addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        const fileInput = document.getElementById('id_valid_id');
-        let fileError = document.getElementById('file-error');
-        if (!fileError) {
-            fileError = document.createElement('div');
-            fileError.id = 'file-error';
-            fileError.className = 'error-message';
-            fileInput.parentNode.appendChild(fileError);
-        }
-        fileInput.classList.remove('error-input');
-        if (file) {
-            document.getElementById('file-name').textContent = file.name;
-            document.getElementById('file-preview').style.display = 'block';
-            fileError.style.display = 'none';
+    // --- Data Mapping for Campus Display ---
+    // NOTE: This data must be accurate and available in your Django context
+    const COLLEGES_DATA = {
+        {% for college in colleges %}
+            "{{ college.id }}": {
+                "id": "{{ college.id }}",
+                "name": "{{ college.name }}",
+                "campus_name": "{{ college.campus.name|default:'N/A' }}" 
+            },
+        {% endfor %}
+    };
+    
+    // --- Profile Picture Functions (Circular UI) ---
+
+    function displayProfilePicture(input) {
+        const previewImg = document.getElementById('profile-picture-preview-img');
+        const icon = document.getElementById('profile-picture-icon');
+        
+        if (input.files.length > 0) {
+            const file = input.files[0];
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                previewImg.src = evt.target.result;
+                previewImg.style.display = 'block';
+                icon.style.display = 'none';
+            };
+            reader.readAsDataURL(file);
         } else {
-            document.getElementById('file-preview').style.display = 'none';
+            previewImg.src = '';
+            previewImg.style.display = 'none';
+            icon.style.display = 'block';
         }
-    });
+    }
 
-    // Role-Based Info Display (unchanged)
+    // --- Password Strength and Toggle Functions ---
+
+    function checkPasswordStrength() {
+        const password = document.getElementById('id_password').value;
+        const bar = document.getElementById('password-strength-bar');
+        let score = 0;
+        
+        if (password.length >= 8) score += 25;
+        if (/[A-Z]/.test(password)) score += 25;
+        if (/[a-z]/.test(password)) score += 25;
+        if (/[0-9!@#$%^&*()]/.test(password)) score += 25;
+
+        bar.style.width = score + '%';
+        bar.setAttribute('aria-valuenow', score);
+        
+        bar.className = 'progress-bar'; 
+        if (score <= 25) {
+            bar.classList.add('bg-danger');
+        } else if (score <= 75) {
+            bar.classList.add('bg-warning');
+        } else {
+            bar.classList.add('bg-success');
+        }
+    }
+
+    // --- Validation and Role Logic ---
+    
+    // Helper to show/hide field errors dynamically
+    function showFieldError(field, message) {
+        let err = document.createElement('div');
+        err.className = 'field-error';
+        err.textContent = message;
+        err.style.color = '#E53E3E';
+        err.style.fontSize = '0.75rem';
+        err.style.marginTop = '0.25rem';
+        err.style.alignSelf = 'center';
+        
+        const inputGroup = field.closest('.input-group');
+
+        if (inputGroup) {
+            // Insert error message after the input group
+            inputGroup.parentNode.insertBefore(err, inputGroup.nextSibling);
+            field.classList.add('error-input');
+        } else if (field.tagName === 'SELECT') {
+            field.parentNode.appendChild(err);
+            field.classList.add('error-select');
+        } else {
+            field.parentNode.appendChild(err);
+            field.classList.add('error-input');
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
-        var roleSelect = document.querySelector('select[name="role"]');
-        var roleBlocks = {
-            'IMPLEMENTER': document.getElementById('role-info-IMPLEMENTER'),
-            'FACULTY': document.getElementById('role-info-FACULTY'),
-            'CLIENT': document.getElementById('role-info-CLIENT'),
-            'DEAN': document.getElementById('role-info-DEAN'),
-            'PROGRAM_HEAD': document.getElementById('role-info-PROGRAM_HEAD'),
-            'COORDINATOR': document.getElementById('role-info-COORDINATOR'),
+        const roleSelect = document.querySelector('select[name="role"]');
+        const collegeSelect = document.querySelector('select[name="college"]');
+        const campusDisplayInput = document.querySelector('input[name="campus_display"]');
+        
+        // Find all rows containing a field that *might* be required based on role
+        const allRoleRows = Array.from(document.querySelectorAll('[data-role-required]'))
+                                .map(f => f.closest('.user-details-row'))
+                                .filter((row, i, self) => row && self.indexOf(row) === i); 
+        
+        const roleSection = document.getElementById('role-specific-section');
+        const emailInput = document.getElementById('email-input');
+        const emailError = document.getElementById('email-error');
+        
+        // Map of role to required field names
+        const roleFieldMap = {
+            'FACULTY': ['college', 'degree', 'expertise'],
+            'COORDINATOR': ['college'],
+            'DEAN': ['college'],
+            'PROGRAM_HEAD': ['college'],
+            'IMPLEMENTER': ['degree', 'expertise'],
+            'CLIENT': ['company', 'industry'],
         };
-        function updateRoleBlocks() {
-            var selected = roleSelect.value;
-            Object.keys(roleBlocks).forEach(function(role) {
-                var block = roleBlocks[role];
-                if (role === selected) {
-                    block.style.display = 'block';
-                } else {
-                    block.style.display = 'none';
-                }
+        
+        function showRoleFields(role) {
+            // 1. Hide all role field rows and remove 'required' attribute
+            allRoleRows.forEach(row => {
+                row.style.display = 'none';
+                Array.from(row.querySelectorAll('[data-role-required]')).forEach(f => {
+                    f.removeAttribute('required');
+                    // Reset value for hidden fields to prevent accidental submission of old data
+                    if (f.tagName === 'INPUT') f.value = '';
+                    if (f.tagName === 'SELECT' && f.options.length > 0) f.value = f.options[0].value;
+                });
             });
-        }
-        roleSelect.addEventListener('change', updateRoleBlocks);
-        updateRoleBlocks();
 
-        // AJAX email uniqueness check (unchanged)
-        var emailInput = document.getElementById('email-input');
-        var emailError = document.getElementById('email-error');
-        function checkEmailAjax() {
-            var email = emailInput.value.trim();
-            if (!email) {
-                emailError.textContent = '';
-                emailError.style.display = 'none';
+            if (!role || !roleFieldMap[role]) {
+                roleSection.style.display = 'none';
+                // Also hide the college/campus fields if they don't belong to the new role
+                if (collegeSelect) collegeSelect.removeAttribute('required');
+                if (collegeSelect) collegeSelect.value = '';
+                if (campusDisplayInput) campusDisplayInput.value = 'Will be determined by College selection';
                 return;
             }
-            fetch('/check-email/?email=' + encodeURIComponent(email))
-                .then(response => response.json())
-                .then(data => {
-                    if (data.exists) {
-                        emailError.textContent = 'This email is already registered.';
-                        emailError.style.display = 'block';
-                    } else {
-                        emailError.textContent = '';
-                        emailError.style.display = 'none';
+            
+            // 2. Show section
+            roleSection.style.display = '';
+
+            // 3. Show only relevant fields and set 'required' attribute
+            const fields = roleFieldMap[role];
+            if (!fields) return;
+
+            fields.forEach(fieldName => {
+                const field = document.querySelector(`[name="${fieldName}"]`);
+                if (field) {
+                    const row = field.closest('.user-details-row');
+                    if (row) {
+                        row.style.display = '';
+                        field.setAttribute('required', 'required');
                     }
-                })
-                .catch(() => {
-                    emailError.textContent = 'Error checking email.';
-                    emailError.style.display = 'block';
-                });
+                }
+            });
+            
+            // 4. Handle College/Campus dependencies (if College is required)
+            if (fields.includes('college')) {
+                // Manually trigger campus update if a college is already selected
+                updateCampusDisplay();
+            } else {
+                // If college is not required for the new role, hide and reset the campus display
+                if (collegeSelect) collegeSelect.removeAttribute('required');
+                if (collegeSelect) collegeSelect.value = '';
+                if (campusDisplayInput) campusDisplayInput.value = 'N/A';
+            }
         }
+        
+        function updateCampusDisplay() {
+            const collegeId = collegeSelect.value;
+            if (collegeId && COLLEGES_DATA[collegeId]) {
+                campusDisplayInput.value = COLLEGES_DATA[collegeId].campus_name || 'N/A';
+            } else {
+                campusDisplayInput.value = 'Will be determined by College selection';
+            }
+        }
+
+        // Initial setup
+        allRoleRows.forEach(row => row.style.display = 'none');
+        if (roleSection) roleSection.style.display = 'none';
+
+        // On change listeners
+        if (roleSelect) {
+            roleSelect.addEventListener('change', function() {
+                showRoleFields(this.value);
+            });
+            if (roleSelect.value) showRoleFields(roleSelect.value);
+        }
+        
+        if (collegeSelect) {
+            collegeSelect.addEventListener('change', updateCampusDisplay);
+        }
+
+        // Password Toggle
+        document.querySelectorAll('.toggle-password').forEach(toggle => {
+            toggle.addEventListener('click', function() {
+                const input = this.closest('.input-group').querySelector('input');
+                const icon = this.querySelector('i');
+                const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+                input.setAttribute('type', type);
+                icon.classList.toggle('fa-eye');
+                icon.classList.toggle('fa-eye-slash');
+            });
+        });
+        
+        // Initial password strength check if form is reloaded with values
+        const passwordInput = document.getElementById('id_password');
+        if (passwordInput) {
+            passwordInput.addEventListener('keyup', checkPasswordStrength);
+            if (passwordInput.value) checkPasswordStrength();
+        }
+
+        // --- AJAX email uniqueness check ---
+        var emailTimer;
+
+        function checkEmailAjax() {
+            clearTimeout(emailTimer);
+            emailTimer = setTimeout(() => {
+                var email = emailInput.value.trim();
+                emailError.textContent = '';
+                emailError.style.display = 'none';
+                emailInput.classList.remove('error-input');
+
+                if (!email) return;
+                
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    emailError.textContent = 'Invalid email format (e.g., user@example.com).';
+                    emailError.style.color = '#E53E3E';
+                    emailError.style.fontSize = '0.75rem';
+                    emailError.style.marginTop = '0.25rem';
+                    emailError.style.display = 'block';
+                    emailInput.classList.add('error-input');
+                    return;
+                }
+
+                fetch('/check-email/?email=' + encodeURIComponent(email))
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.exists) {
+                            emailError.textContent = 'This email is already registered.'; 
+                            emailError.style.color = '#E53E3E';
+                            emailError.style.fontSize = '0.75rem';
+                            emailError.style.marginTop = '0.25rem';
+                            emailError.style.display = 'block';
+                            emailInput.classList.add('error-input');
+                        }
+                    });
+            }, 500); 
+        }
+
         if (emailInput) {
             emailInput.addEventListener('blur', checkEmailAjax);
             emailInput.addEventListener('input', checkEmailAjax);
         }
 
-        // Robust form validation for all required fields
+        // --- Unified Form validation on submit ---
         document.getElementById('addUserForm').addEventListener('submit', function(e) {
             let valid = true;
-            // Remove previous error states/messages for inputs, selects, textareas
+            let firstError = null;
+            let errorQueue = [];
+
+
+            // 1. Remove previous error states/messages
             const fields = Array.from(document.getElementById('addUserForm').querySelectorAll('input, select, textarea'));
             fields.forEach(field => {
-                field.classList.remove('error-input');
+                field.classList.remove('error-input', 'error-select');
                 let err = field.parentNode.querySelector('.field-error');
                 if (err) err.remove();
+                if (field.closest('.input-group')) {
+                    let nextSiblingErr = field.closest('.input-group').nextElementSibling;
+                    if (nextSiblingErr && nextSiblingErr.classList.contains('field-error')) nextSiblingErr.remove();
+                }
             });
-            // Remove file error
-            let fileInput = document.getElementById('id_valid_id');
-            let fileError = document.getElementById('file-error');
-            if (fileError) fileError.style.display = 'none';
-            fileInput.classList.remove('error-input');
 
-            // Validate all visible required fields
+            // 2. Validate all required fields (only if visible)
             fields.forEach(field => {
-                // Only validate visible fields
-                if (field.offsetParent === null) return;
-                // Skip optional fields
-                if (field.hasAttribute('data-optional')) return;
-                // Validate required fields
-                if ((field.tagName === 'INPUT' || field.tagName === 'TEXTAREA') && field.type !== 'file' && !field.value.trim()) {
-                    valid = false;
-                    field.classList.add('error-input');
-                    let err = document.createElement('div');
-                    err.className = 'field-error';
-                    err.textContent = 'This field is required.';
-                    err.style.color = '#E53E3E';
-                    err.style.fontSize = '0.95rem';
-                    err.style.marginTop = '0.25rem';
-                    field.parentNode.appendChild(err);
-                }
-                if (field.tagName === 'SELECT' && (!field.value || field.value === '' || field.value === field.querySelector('option[disabled]')?.value)) {
-                    valid = false;
-                    field.classList.add('error-select');
-                    let err = document.createElement('div');
-                    err.className = 'field-error';
-                    err.textContent = 'This field is required.';
-                    err.style.color = '#E53E3E';
-                    err.style.fontSize = '0.95rem';
-                    err.style.marginTop = '0.25rem';
-                    field.parentNode.appendChild(err);
+                // Only validate if field is visible
+                const row = field.closest('.user-details-row');
+                const isVisible = (!row || window.getComputedStyle(row).display !== 'none') && field.offsetParent !== null;
+                const isRequired = field.hasAttribute('required');
+                if (isRequired && isVisible) {
+                    if (!field.value || (field.tagName === 'INPUT' && field.type !== 'file' && !field.value.trim())) {
+                        valid = false;
+                        field.classList.add(field.tagName === 'SELECT' ? 'error-select' : 'error-input');
+                        // Find the label text
+                        let labelText = field.parentNode.querySelector('.user-details-label');
+                        if (!labelText) {
+                            labelText = field.parentNode.previousElementSibling && field.parentNode.previousElementSibling.classList.contains('user-details-label')
+                                ? field.parentNode.previousElementSibling
+                                : null;
+                        }
+                        let prettyName = labelText ? labelText.textContent.replace(/\s*\*/g, '').trim() : (field.name || field.id || 'Field');
+                        const err = document.createElement('div');
+                        err.className = 'field-error';
+                        err.textContent = `${prettyName} is required.`;
+                        err.style.color = '#E53E3E';
+                        err.style.fontSize = '0.75rem';
+                        err.style.marginTop = '0.25rem';
+                        err.style.alignSelf = 'center';
+                        if (prettyName == "Password") {
+                            err.style.alignSelf = 'flex-start';
+                            err.style.display = 'flex';
+                            err.style.marginBottom = '0';
+                        }
+                            
+                        if (field.closest('.input-group')) {
+                            field.closest('.input-group').parentNode.insertBefore(err, field.closest('.input-group').nextSibling);
+                        } else {
+                            field.parentNode.appendChild(err);
+                        }
+                        if (!firstError) firstError = field;
+                    }
                 }
             });
 
-            // Email uniqueness error
-            var email = emailInput.value.trim();
-            if (email && emailError.style.display === 'block') {
+            // 3. Specific Format Checks (only if visible)
+            fields.forEach(field => {
+                const row = field.closest('.user-details-row');
+                const isVisible = (!row || window.getComputedStyle(row).display !== 'none') && field.offsetParent !== null;
+                if (isVisible && field.name === 'email' && field.value.trim()) {
+                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(field.value.trim())) {
+                        valid = false;
+                        field.classList.add('error-input');
+                        showFieldError(field, 'Invalid email format (e.g., user@example.com).');
+                        if (!firstError) firstError = field;
+                    }
+                }
+                if (isVisible && field.name === 'contact_no' && field.value.trim()) {
+                    if (!/^\+?[\d\s-]{7,}$/.test(field.value.trim())) {
+                        valid = false;
+                        field.classList.add('error-input');
+                        showFieldError(field, 'Invalid contact number format.');
+                        if (!firstError) firstError = field;
+                    }
+                }
+            });
+            
+            // 3. Email uniqueness error check
+            var emailInput = document.getElementById('email-input');
+            if (emailInput && emailInput.value.trim() && emailError.style.display === 'block') {
                 valid = false;
+                if (!firstError) firstError = emailInput;
+                errorQueue.push({field: emailInput, message: 'This email is already registered.'});
                 emailInput.classList.add('error-input');
-                emailInput.focus();
             }
+
+            // Render all errors
+            errorQueue.forEach(errObj => {
+                showFieldError(errObj.field, errObj.message);
+            });
 
             if (!valid) {
                 e.preventDefault();
+                e.stopPropagation();
+                if (firstError && typeof firstError.focus === 'function') firstError.focus();
+                return false;
             }
         });
+        
+        // Initial call to update campus display if a college is already selected (on error reload)
+        if (collegeSelect && collegeSelect.value) {
+            updateCampusDisplay();
+        }
     });
 </script>
 

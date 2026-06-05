@@ -1,297 +1,10 @@
 {% extends base_template %}
 {% block content %}
+{% load static %}
 <title>Submission Details</title>
-
-<style>
-    body {
-        background: #F9F9F9;
-        margin: 0;
-        font-family: 'Inter', sans-serif;
-    }
-
-    .main-container {
-        margin: 60px;
-        display: flex;
-        flex-direction: column;
-        gap: 30px;
-    }
-
-    .detail-text {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 32px;
-        color: #000000;
-    }
-
-    .detail-container {
-        border-radius: 20px;
-        background: #FEFCFC;
-        box-shadow: 0 0 8px 1px rgba(0, 0, 0, 0.25);
-        padding: 50px 60px;
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-    }
-
-    .detail-trio {
-        display: flex;
-        align-items: flex-start;
-    }
-
-    .detail-trio > :nth-child(1) {
-        margin-right: 10px;
-    }
-
-    .detail-trio > :nth-child(2) {
-        margin-right: 75px;
-    }
-
-    .detail-icon {
-        width: 28px;
-        height: 28px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .detail-item {
-        font-family: 'Inter', sans-serif;
-        font-weight: 600;
-        font-size: 20px;
-        width: 210px;
-    }
-
-    .detail-value {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 20px;
-    }
-
-
-    .back-btn, .action-btn, .reject-btn {
-        display: inline-block;
-        color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
-        text-decoration: none;
-        font-size: 1rem;
-        font-weight: 500;
-        border: none;
-        text-align: center;
-        font-family: 'Inter', sans-serif;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-    
-    .back-btn { background: #6B7280; }
-    .back-btn:hover { background: #4b5563; }
-    .action-btn { background: #063A1C; }
-    .action-btn:hover { background: #095c2d; }
-    .reject-btn { background: #D5110A; }
-    .reject-btn:hover { background: #a10c07; }
-
-    /* Modal Styles */
-    .modal-bg {
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.25);
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    .modal {
-        background: #fff;
-        border-radius: 1rem;
-        box-shadow: 0 2px 16px rgba(0,0,0,0.18);
-        padding: 2.5rem 2.5rem 2rem 2.5rem;
-        min-width: 350px;
-        max-width: 95vw;
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-        align-items: center;
-    }
-
-    .modal-title {
-        font-size: 1.3rem;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-        color: #222;
-    }
-    .modal-content {
-        font-size: 1rem;
-        color: #444;
-        margin-bottom: 1rem;
-        text-align: center;
-    }
-    .modal-actions {
-        display: flex;
-        gap: 20px;
-        justify-content: center;
-        width: 100%;
-    }
-    .modal input, .modal textarea {
-        width: 100%;
-        padding: 0.5rem;
-        border-radius: 6px;
-        border: 1px solid #ccc;
-        font-size: 1rem;
-        font-family: 'Inter', sans-serif;
-        margin-bottom: 1rem;
-    }
-
-    textarea {
-        resize: none;
-    }
-
-</style>
-
-<style>
-    .name-link {
-        color: #0A6C44;
-        text-decoration: none;
-    }
-
-    .name-link:hover {
-        color: #095c2d;
-        text-decoration: underline;
-    }
-
-    .upper {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-    }
-
-    .upper-left {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 5px;
-    }
-
-    .upper-right {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-        align-items: flex-end;
-    }
-
-    .file-text {
-        font-size: 2.3em;
-        font-weight: 600;
-    }
-
-    .green-text {
-        color: #0A6C44;
-    }
-
-    .grey-text {
-        font-size: 0.9em;
-        font-weight: 400;
-        color: #6c757d;
-    }
-    
-    .deadline-text {
-        font-size: 1.1em;
-        font-weight: 600;
-        color: #181818;
-    }
-
-    hr {
-        border: none;
-        border-top: 1px solid #7b7b7b;
-        margin: 0.5rem 1rem;
-    }
-
-    .notes-text {
-        font-size: 1.1em;
-        font-weight: 400;
-        color: #181818;
-        word-break: break-word;
-    }
-
-    .trained-individuals-text {
-        font-size: 1.5em;
-        font-weight: 600;
-        color: #181818;
-    }
-
-    input[type="checkbox"] {
-        width: 20px;
-        height: 20px;
-        margin-top: 4px;
-        accent-color: black;
-    }
-
-    .content-leftright {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        gap: 150px;
-    }
-
-    .content-left {
-        display: flex;
-        flex-direction: column;
-        gap: 30px;
-    }
-
-    .content-right {
-        display: flex;
-        flex-direction: column;
-        gap: 30px;
-        min-width: 40%;
-        max-width: 40%;
-    }
-
-    .final-text {
-        font-size: 1.2em;
-        font-weight: 500;
-    }
-
-    .event-image {
-        width: 300px;
-        height: auto;
-        border-radius: 8px;
-        object-fit: cover;
-    }
-
-    .red {
-        color: #D5110A;
-    }
-
-    .redirect-text {
-        color: #007bff;
-        text-decoration: none;
-    }
-
-    .redirect-container {
-        display: flex;
-        gap: 20px;
-    }
-    
-    .redirect-text:hover {
-        text-decoration: underline;
-        cursor: pointer;
-    }
-
-    .action-container {
-        margin-top: 0.5rem;
-    }
-
-    .action-form {
-        display: flex;
-        gap: 15px;
-        justify-content: center;
-    }
-    
-    .final-adjust {
-        margin-left: 0.5rem;
-    }
-</style>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link href="{% static 'shared/projects/modal.css' %}" rel="stylesheet">
 
 <div class="main-container">
 
@@ -304,31 +17,36 @@
 
     <div class="upper">
         <div class="upper-left">
-            {% if submission.downloadable.file.url %}
-            <a href="{{ submission.downloadable.file.url }}" target="_blank" class="name-link file-text">{{ submission.downloadable.name }}</a>
-            {% endif %}
+            <a href="{{ submission.downloadable_link }}" target="_blank" class="name-link file-text">{{ submission.downloadable.name }}</a>
             
             <span class="green-text">
                 <a class="name-link" href="{% url 'project_submissions' submission.project.id %}">{{ submission.project.title }}</a>
                 {% if submission.downloadable.submission_type == "event" %} • {{ submission.event.title }}{% endif %}
             </span>
 
-            <span class="grey-text">Assigned: {{ submission.created_at|date:"F j, Y, H:i" }}{% if request.user.role in ADMIN_ROLES%} • {{ submission.created_by.get_full_name }}{% endif %}</span>
+            <span class="grey-text">Assigned: {{ submission.created_at|date:"F j, Y, H:i" }}{% if request.user.role in ADMIN_ROLES%} • <a href="{% url 'user_profile' submission.created_by.id %}" class="name-link">{{ submission.created_by.get_full_name }}</a>{% endif %}</span>
          
-            {% if submission.status != "PENDING" %}
-            <span class="grey-text">Submitted:  {{ submission.submitted_at|date:"F j, Y, H:i" }} • {{ submission.submitted_by.get_full_name }}</span>
+            {% if submission.submitted_by %}
+            <span class="grey-text">Submitted:  {{ submission.submitted_at|date:"F j, Y, H:i" }} • <a href="{% url 'user_profile' submission.submitted_by.id %}" class="name-link">{{ submission.submitted_by.get_full_name }}</a></span>
             {% endif %}
-            {% if submission.status != "PENDING" and submission.status != "SUBMITTED" %}
-            <span class="grey-text">Reviewed:  {{ submission.reviewed_at|date:"F j, Y, H:i" }}{% if request.user.role in ADMIN_ROLES or request.user.role in COORDINATOR_ROLE %} • {{ submission.reviewed_by.get_full_name }}{% endif %}</span>
+            {% if submission.reviewed_by %}
+            <span class="grey-text">Reviewed:  {{ submission.reviewed_at|date:"F j, Y, H:i" }}{% if request.user.role in ADMIN_ROLES or request.user.role in COORDINATOR_ROLE %} • <a href="{% url 'user_profile' submission.reviewed_by.id %}" class="name-link">{{ submission.reviewed_by.get_full_name }}</a>{% endif %}</span>
             {% endif %}
-            {% if submission.status != "PENDING" and submission.status != "SUBMITTED" and submission.status != "REQUESTED_REVISION" and submission.status != "FORWARDED" %}
-            <span class="grey-text">Authorized: {{ submission.authorized_at|date:"F j, Y, H:i" }}{% if request.user.role in ADMIN_ROLES%} • {{ submission.authorized_by.get_full_name }}{% endif %}</span>
+            {% if submission.authorized_by %}
+            <span class="grey-text">Authorized: {{ submission.authorized_at|date:"F j, Y, H:i" }}{% if request.user.role in ADMIN_ROLES%} • <a href="{% url 'user_profile' submission.authorized_by.id %}" class="name-link">{{ submission.authorized_by.get_full_name }}</a>{% endif %}</span>
             {% endif %}
         </div>
 
         <div class="upper-right">
             <span class="deadline-text">Due on {{ submission.deadline|date:"F j, Y, H:i" }}</span>
-            <span class="grey-text">Status: {{ submission.get_status_display }}</span>
+            <span class="grey-text">Status: {{ submission.get_status_display }}{% if submission.is_late_submission %} <span class="red" style="font-weight:600;">(Late Submission)</span>{% endif %}</span>
+            {% if submission.revision_count > 0 or submission.rejection_count > 0 %}
+            <span class="grey-text">
+                {% if submission.revision_count > 0 %}Revisions: {{ submission.revision_count }}{% endif %}
+                {% if submission.revision_count > 0 and submission.rejection_count > 0 %} • {% endif %}
+                {% if submission.rejection_count > 0 %}Rejections: {{ submission.rejection_count }}{% endif %}
+            </span>
+            {% endif %}
         </div>
     </div>
 
@@ -337,14 +55,14 @@
     <div class="content-leftright">
         <div class="content-left">
             {% if submission.notes %} <span class="notes-text">{{ submission.notes }}</span> {% endif %}
-            {% if submission.status == "REVISION_REQUESTED" %} <span class="notes-text"><strong class="red">Reason/s for Requesting Revision</strong><br>{{ submission.reason_for_revision }}</span>{% endif %}
-            {% if submission.status == "REJECTED" %} <span class="notes-text"><strong class="red">Reason/s for Rejection</strong><br>{{ submission.reason_for_rejection }}</span>{% endif %}
-            {% if submission.file %} <span class="notes-text"><a href="{{ submission.file.url }}" target="_blank" class="name-link">File Here</a></span>{% endif %}
+            {% if submission.reason_for_revision %} <span class="notes-text"><strong class="red">Reason/s for Requesting Revision</strong><br>{{ submission.reason_for_revision }}</span>{% endif %}
+            {% if submission.reason_for_rejection %} <span class="notes-text"><strong class="red">Reason/s for Rejection</strong><br>{{ submission.reason_for_rejection }}</span>{% endif %}
+            <span class="notes-text"><a href="{{ submission.submitted_form_link }}" target="_blank" class="name-link">{{ submission.submitted_form_name_with_ext }}</a></span>
         </div>
 
         <div class="content-right">
             {% if submission.status != "PENDING" %}
-                <!-- Submission [Event] Details -->
+                
                 {% if submission.downloadable.submission_type == "event" %}
                     <span class="trained-individuals-text">{{ submission.num_trained_individuals }} Trained Individuals</span>
 
@@ -356,105 +74,580 @@
 
                     <span class="notes-text">{{ submission.image_description }}</span>
 
-                <!-- Submission [Final] Details -->
+                
                 {% elif submission.downloadable.submission_type == "final" %}
-                    <span class="final-text">{% if submission.for_product_production %}<i class="fa-solid fa-check"></i>{% else %}<i class="fa-solid fa-xmark"></i>{% endif %} <span class="final-adjust">For Product Production</span></span>
-                    <span class="final-text">{% if submission.for_research %}<i class="fa-solid fa-check"></i>{% else %}<i class="fa-solid fa-xmark"></i>{% endif %} <span class="final-adjust">For Research</span></span>
-                    <span class="final-text">{% if submission.for_extension %}<i class="fa-solid fa-check"></i>{% else %}<i class="fa-solid fa-xmark"></i>{% endif %} <span class="final-adjust">For Extension</span></span>
+                    <span class="final-text">{% if submission.for_product_production %}<i class="fa-solid fa-check"></i>{% elif submission.for_product_production == False %}<i class="fa-solid fa-xmark"></i>{% else %}_{% endif %} <span class="final-adjust">For Product Production</span></span>
+                    <span class="final-text">{% if submission.for_research %}<i class="fa-solid fa-check"></i>{% elif submission.for_research == False %}<i class="fa-solid fa-xmark"></i>{% else %}_{% endif %} <span class="final-adjust">For Research</span></span>
+                    <span class="final-text">{% if submission.for_extension %}<i class="fa-solid fa-check"></i>{% elif submission.for_extension == False %}<i class="fa-solid fa-xmark"></i>{% else %}_{% endif %} <span class="final-adjust">For Extension</span></span>
                 {% endif %}
             {% endif %}
         </div>
     </div>
 
     <div class="action-container">
-        {% if submission.status == 'SUBMITTED' and request.user.role in FACULTY_ROLE %}
-       <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" class="action-form">
-            {% csrf_token %}
-            <button type="submit" name="action" value="unsubmit" class="reject-btn">Unsubmit</button>
-        </form>
+        {% if submission.status == 'PENDING' %}
+            {% if request.user.id == project.project_leader.id or request.user.id in provider_ids %}
+            <div class="action-form">
+                <button type="button" class="action-btn endorse-btn" id="submit-btn" 
+                        data-submission-type="{{ submission.downloadable.submission_type }}" 
+                        data-submission-id="{{ submission.id }}">Submit
+                </button>
+            </div>
+            {% elif request.user.role in ADMIN_ROLES %}
+            <div class="action-form">
+                <button type="button" class="action-btn reject-btn" id="delete-btn">Delete</button>
+            </div>
+            {% endif %}
 
-        {% elif submission.status == 'SUBMITTED' and request.user.role == 'COORDINATOR' %}
+        {% elif submission.status == 'SUBMITTED' %}
+            {% if request.user.id == project.project_leader.id or request.user.id in provider_ids %}
+           <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" class="action-form">
+                {% csrf_token %}
+                <button type="submit" name="action" value="unsubmit" class="action-btn reject-btn">Unsubmit</button>
+            </form>
+            {% elif request.user.role == 'COORDINATOR' %}
+            <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" class="action-form">
+                {% csrf_token %}
+                <button type="submit" name="action" value="forward" class="action-btn endorse-btn">Forward to UESO</button>
+                    <button type="button" class="action-btn reject-btn" id="request-revision-btn">Request Revision</button>
+            </form>
+            {% elif project_leader_has_no_college and request.user.role in ADMIN_ROLES and user_not_in_project %}
+            <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" class="action-form">
+                {% csrf_token %}
+                <button type="submit" name="action" value="accept" class="action-btn approve-btn">Approve</button>
+                    <button type="button" class="action-btn reject-btn" id="request-revision-btn">Request Revision</button>
+            </form>
+            {% endif %}
+
+        {% elif submission.status == 'FORWARDED' and request.user.role in ADMIN_ROLES and user_not_in_project %}
         <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" class="action-form">
             {% csrf_token %}
-            <button type="submit" name="action" value="forward" class="action-btn">Forward to UESO</button>
-            <button type="button" class="reject-btn" id="request-revision-btn">Request Revision</button>
+            <button type="submit" name="action" value="accept" class="action-btn approve-btn">Accept</button>
+            <button type="button" class="action-btn reject-btn" id="reject-btn">Reject</button>
         </form>
 
-        {% elif submission.status == 'FORWARDED' and request.user.role in ADMIN_ROLES %}
-        <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" class="action-form">
-            {% csrf_token %}
-            <button type="submit" name="action" value="accept" class="action-btn">Accept</button>
-            <button type="button" class="reject-btn" id="reject-btn">Reject</button>
-        </form>
+        {% elif submission.status == 'REVISION_REQUESTED' %}
+            {% if request.user.id == project.project_leader.id or request.user.id in provider_ids %}
+            <div class="action-form">
+                <button type="button" class="action-btn endorse-btn" id="submit-revision-btn"
+                        data-submission-type="{{ submission.downloadable.submission_type }}" 
+                        data-submission-id="{{ submission.id }}">Submit Revision</button>
+            </div>
+            {% endif %}
+
+        {% elif submission.status == 'REJECTED' %}
+            {% if request.user.id == project.project_leader.id or request.user.id in provider_ids %}
+            <div class="action-form">
+                <button type="button" class="action-btn endorse-btn" id="submit-revision-btn" 
+                        data-submission-type="{{ submission.downloadable.submission_type }}" 
+                        data-submission-id="{{ submission.id }}">Submit</button>
+            </div>
+            {% endif %}
+
+        {% elif submission.status == 'OVERDUE' %}
+            {% if request.user.id == project.project_leader.id or request.user.id in provider_ids %}
+            <div class="action-form">
+                <button type="button" class="action-btn endorse-btn" id="submit-revision-btn" 
+                        data-submission-type="{{ submission.downloadable.submission_type }}" 
+                        data-submission-id="{{ submission.id }}">Submit (Late)</button>
+            </div>
+            {% endif %}
         {% endif %}
     </div>
 
-    <!-- Modals -->
+    <div id="modal-final" class="submission-modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Final Submission</h2>
+            <form method="post" enctype="multipart/form-data" class="submission-form" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="submission_id" value="{{ submission.id }}" />
+                <input type="hidden" name="action" value="submit" />
+                <div class="form-group">
+                    <label class="form-label">File <span class="required">*</span></label></label>
+                    <div class="upload-area-group">
+                        <div class="upload-area" onclick="document.getElementById('id_final_file').click()">
+                            <svg class="upload-icon"><use href="#icon-upload"></use></svg>
+                            <span class="upload-text">Click to upload</span>
+                            <input class="file-input" type="file" name="final_file" id="id_final_file" style="display:none;" accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,image/jpg,image/gif,image/webp" required>
+                        </div>
+                    </div>
+                </div>
+                
+                <div> 
+                    <label class="form-label">
+                        Actions:
+                        <span class="info-icon">    
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-info-circle" viewBox="0 0 16 16">
+                                <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                                <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0"/>
+                            </svg>
+                        <span class="info-tooltip">Choose what action you would recommend as continuation of this extension project. You can not choose.</span>
+                    </label>
+                    <div class="form-group chcklist">
+                        <label style="margin-left: 0.7rem;"><input type="checkbox" name="for_product_production"> <p>Product Production</p></label><br>
+                        <label style="margin-left: 0.7rem;"><input type="checkbox" name="for_research"> <p>Further Research</p></label><br>
+                        <label style="margin-left: 0.7rem;"><input type="checkbox" name="for_extension"> <p>Further Extension</p></label>
+                    </div>
+
+                </div>
+
+                <div class="form-actions" style="justify-content:center;">
+                    <button type="button" class="action-btn cancel-btn">Cancel</button>
+                    <button type="submit" class="action-btn endorse-btn">Submit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-event" class="submission-modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Event Submission</h2>
+            <form method="post" enctype="multipart/form-data" class="submission-form" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="submission_id" value="{{ submission.id }}" />
+                <input type="hidden" name="action" value="submit" />
+                <div class="form-group">
+                    <label class="form-label">No. of Trained Individuals <span class="required">*</span></label><br>
+                    <input type="number" name="num_trained_individuals" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Image File <span class="required">*</span></label><br>
+                    <div class="upload-area-group">
+                        <div class="upload-area" onclick="document.getElementById('id_image_event').click()">
+                            <svg class="upload-icon"><use href="#icon-upload"></use></svg>
+                            <span class="upload-text">Click to upload</span>
+                            <input class="file-input" type="file" name="image_event" id="id_image_event" style="display:none;" accept="image/jpeg,image/png,image/jpg,image/gif,image/webp" required>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description of Picture <span class="required">*</span></label><br>
+                    <textarea name="image_description" rows="3" required></textarea>
+                </div>
+
+                <div class="form-actions" style="justify-content:center;">
+                    <button type="button" class="action-btn cancel-btn">Cancel</button>
+                    <button type="submit" class="action-btn endorse-btn">Submit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-file" class="submission-modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>File Submission</h2>
+            <form method="post" enctype="multipart/form-data" class="submission-form" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="submission_id" value="{{ submission.id }}" />
+                <input type="hidden" name="action" value="submit" />
+                <div class="form-group">
+                    <label class="form-label">File <span class="required">*</span></label>
+                    <div class="upload-area-group">
+                        <div class="upload-area" onclick="document.getElementById('id_file_file').click()" style="width: 100%;">
+                            <svg class="upload-icon"><use href="#icon-upload"></use></svg>
+                            <span class="upload-text">Click to upload</span>
+                            <input class="file-input" type="file" name="file_file" id="id_file_file" style="display:none;" accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,image/jpg,image/gif,image/webp" required>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="form-actions" style="justify-content:center;">
+                    <button type="button" class="action-btn cancel-btn">Cancel</button>
+                    <button type="submit" class="action-btn endorse-btn">Submit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="modal-bg" class="modal-bg" style="display:none;">
         <div class="modal" id="modal-reject" style="display:none;">
             <div class="modal-title">Reject Submission</div>
             <div class="modal-content">Please provide a reason for rejection:</div>
-            <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" style="width:100%;">
+            <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" style="width:100%;" novalidate>
                 {% csrf_token %}
-                <input type="hidden" name="action" value="reject" />
-                <textarea name="reason" rows="3" required placeholder="Enter reason..." style="resize:vertical;"></textarea>
+                <div>
+                    <input type="hidden" name="action" value="reject" />
+                    <textarea name="reason" rows="3" required placeholder="Enter reason..." style="resize:vertical; min-height: 10rem;"></textarea>
+                </div>
+
+                <div style="margin-top:1rem;">
+                    <label style="display:flex; margin-bottom: 0.6rem; align-items: center; gap:0.5rem;font-size:0.95rem;color:#374151;cursor:pointer;">
+                        <input type="checkbox" id="update-deadline-reject" class="user-details-value" onchange="document.getElementById('new-deadline-reject').disabled = !this.checked; if(!this.checked) document.getElementById('new-deadline-reject').value = '';">
+                        Update Deadline
+                    </label>
+                    <input type="datetime-local" name="new_deadline" class="user-details-value" id="new-deadline-reject" disabled style="margin-bottom:1rem;width:100%;" value="{{ submission.deadline|date:'Y-m-d\TH:i' }}">
+                </div>
+
                 <div class="modal-actions">
-                    <button type="button" class="back-btn" id="cancel-reject">Cancel</button>
-                    <button type="submit" class="reject-btn">Reject</button>
+                    <button type="button" class="action-btn cancel-btn" id="cancel-reject">Cancel</button>
+                    <button type="submit" class="action-btn reject-btn">Reject</button>
                 </div>
             </form>
         </div>
         <div class="modal" id="modal-request-revision" style="display:none;">
             <div class="modal-title">Request Revision</div>
             <div class="modal-content">Please provide a reason for revision:</div>
-            <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" style="width:100%;">
+            <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" style="width:100%;" novalidate>
                 {% csrf_token %}
-                <input type="hidden" name="action" value="request_revision" />
-                <textarea name="reason" rows="3" required placeholder="Enter reason..." style="resize:vertical;"></textarea>
+                <div>
+                    <input type="hidden" name="action" value="request_revision" />
+                    <textarea name="reason" rows="3" required placeholder="Enter reason..." style="resize:vertical;"></textarea>
+                </div>
+
+                <div style="margin-top:1rem;">
+                    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.95rem;color:#374151;cursor:pointer;">
+                        <input type="checkbox" id="update-deadline-revision" class="user-details-value" style="width:18px;height:18px;cursor:pointer;" onchange="document.getElementById('new-deadline-revision').disabled = !this.checked; if(!this.checked) document.getElementById('new-deadline-revision').value = '';">
+                        Update Deadline
+                    </label>
+                    <input type="datetime-local" name="new_deadline" class="user-details-value" id="new-deadline-revision" disabled style="margin-top:0.5rem;width:100%;" value="{{ submission.deadline|date:'Y-m-d\TH:i' }}">
+                </div>
+
+                <div class="modal-actions" style="margin-top:1.5rem;">
+                    <button type="button" class="action-btn cancel-btn" id="cancel-request-revision">Cancel</button>
+                    <button type="submit" class="action-btn reject-btn">Request Revision</button>
+                </div>
+            </form>
+        </div>
+        <div class="modal" id="modal-delete" style="display:none;">
+            <div class="modal-title">Delete Submission</div>
+            <div class="modal-content">Are you sure you want to delete this submission? This action cannot be undone.</div>
+            <form method="post" action="{% url 'admin_submission_action' project.id submission.id %}" style="width:100%;" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete" />
                 <div class="modal-actions">
-                    <button type="button" class="back-btn" id="cancel-request-revision">Cancel</button>
-                    <button type="submit" class="reject-btn">Request Revision</button>
+                    <button type="button" class="action-btn cancel-btn" id="cancel-delete">Cancel</button>
+                    <button type="submit" class="action-btn reject-btn">Delete</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- SVG Icons -->
 <svg style="display:none;">
     <symbol id="detail-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M11.8008 17.5508C12.1266 17.5508 12.3999 17.4404 12.6207 17.2196C12.8415 16.9988 12.9515 16.7258 12.9508 16.4008V11.8008C12.9508 11.4749 12.8404 11.202 12.6196 10.982C12.3988 10.7619 12.1258 10.6515 11.8008 10.6508C11.4757 10.65 11.2028 10.7604 10.982 10.982C10.7612 11.2035 10.6508 11.4765 10.6508 11.8008V16.4008C10.6508 16.7266 10.7612 16.9999 10.982 17.2207C11.2028 17.4415 11.4757 17.5515 11.8008 17.5508ZM11.8008 8.35078C12.1266 8.35078 12.3999 8.24038 12.6207 8.01958C12.8415 7.79878 12.9515 7.52585 12.9508 7.20078C12.95 6.87571 12.8396 6.60278 12.6196 6.38198C12.3995 6.16118 12.1266 6.05078 11.8008 6.05078C11.4749 6.05078 11.202 6.16118 10.982 6.38198C10.7619 6.60278 10.6515 6.87571 10.6508 7.20078C10.65 7.52585 10.7604 7.79916 10.982 8.02073C11.2035 8.2423 11.4765 8.35231 11.8008 8.35078ZM11.8008 23.3008C10.2099 23.3008 8.71495 22.9987 7.31578 22.3946C5.91662 21.7904 4.69953 20.9713 3.66453 19.937C2.62953 18.9028 1.81035 17.6857 1.20698 16.2858C0.603616 14.8858 0.301549 13.3908 0.300783 11.8008C0.300016 10.2107 0.602083 8.71571 1.20698 7.31578C1.81188 5.91585 2.63107 4.69876 3.66453 3.66453C4.698 2.6303 5.91508 1.81111 7.31578 1.20698C8.71648 0.602848 10.2115 0.300781 11.8008 0.300781C13.3901 0.300781 14.8851 0.602848 16.2858 1.20698C17.6865 1.81111 18.9036 2.6303 19.937 3.66453C20.9705 4.69876 21.7901 5.91585 22.3957 7.31578C23.0014 8.71571 23.3031 10.2107 23.3008 11.8008C23.2985 13.3908 22.9964 14.8858 22.3946 16.2858C21.7927 17.6857 20.9736 18.9028 19.937 19.937C18.9005 20.9713 17.6834 21.7908 16.2858 22.3957C14.8881 23.0006 13.3931 23.3023 11.8008 23.3008ZM11.8008 21.0008C14.3691 21.0008 16.5445 20.1095 18.327 18.327C20.1095 16.5445 21.0008 14.3691 21.0008 11.8008C21.0008 9.23245 20.1095 7.05703 18.327 5.27453C16.5445 3.49203 14.3691 2.60078 11.8008 2.60078C9.23245 2.60078 7.05703 3.49203 5.27453 5.27453C3.49203 7.05703 2.60078 9.23245 2.60078 11.8008C2.60078 14.3691 3.49203 16.5445 5.27453 18.327C7.05703 20.1095 9.23245 21.0008 11.8008 21.0008Z" fill="black"/>
     </symbol>
+
+    <symbol id="icon-add" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M6.80039 14.4004C6.80039 14.7187 6.92682 15.0239 7.15186 15.2489C7.37691 15.474 7.68213 15.6004 8.00039 15.6004C8.31865 15.6004 8.62388 15.474 8.84892 15.2489C9.07396 15.0239 9.20039 14.7187 9.20039 14.4004V9.20039H14.4004C14.7187 9.20039 15.0239 9.07396 15.2489 8.84892C15.474 8.62388 15.6004 8.31865 15.6004 8.00039C15.6004 7.68213 15.474 7.37691 15.2489 7.15186C15.0239 6.92682 14.7187 6.80039 14.4004 6.80039H9.20039V1.60039C9.20039 1.28213 9.07396 0.976906 8.84892 0.751863C8.62388 0.526819 8.31865 0.400391 8.00039 0.400391C7.68213 0.400391 7.37691 0.526819 7.15186 0.751863C6.92682 0.976906 6.80039 1.28213 6.80039 1.60039V6.80039H1.60039C1.28213 6.80039 0.976906 6.92682 0.751863 7.15186C0.526819 7.37691 0.400391 7.68213 0.400391 8.00039C0.400391 8.31865 0.526819 8.62388 0.751863 8.84892C0.976906 9.07396 1.28213 9.20039 1.60039 9.20039H6.80039V14.4004Z" fill="black"/>
+    </symbol>
+
+    <symbol id="icon-edit" viewBox="0 0 18 18" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M2 16H3.425L13.2 6.225L11.775 4.8L2 14.575V16ZM1 18C0.716667 18 0.479333 17.904 0.288 17.712C0.0966668 17.52 0.000666667 17.2827 0 17V14.575C0 14.3083 0.0500001 14.054 0.15 13.812C0.25 13.57 0.391667 13.3577 0.575 13.175L13.2 0.575C13.4 0.391667 13.621 0.25 13.863 0.15C14.105 0.0500001 14.359 0 14.625 0C14.891 0 15.1493 0.0500001 15.4 0.15C15.6507 0.25 15.8673 0.4 16.05 0.6L17.425 2C17.625 2.18333 17.7707 2.4 17.862 2.65C17.9533 2.9 17.9993 3.15 18 3.4C18 3.66667 17.954 3.921 17.862 4.163C17.77 4.405 17.6243 4.62567 17.425 4.825L4.825 17.425C4.64167 17.6083 4.429 17.75 4.187 17.85C3.945 17.95 3.691 18 3.425 18H1ZM12.475 5.525L11.775 4.8L13.2 6.225L12.475 5.525Z" fill="black"/>
+    </symbol>
+
+    <symbol id="icon-upload" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+        <path d="M12,11L8,15H16L12,11Z" />
+    </symbol>
+
 </svg>
 
 <script>
-    // Modal logic
+    const filesToUpload = {};
+
+    function renderFilePreview(modalId) {
+        // Function intentionally empty, relying on browser/simple JS update for single file.
+    }
+
+    function addFiles(modalId, fileList) {
+        // Only keep the first file for single file upload
+        if (fileList.length > 0) {
+            filesToUpload[modalId] = [fileList[0]];
+        } else {
+            filesToUpload[modalId] = [];
+        }
+    }
+
+    function handleSubmission(event) {
+        event.preventDefault();
+        const form = event.target;
+        // Since the views expects explicit names, we rely on the input name attributes.
+        form.submit();
+    }
+
+
     function showModal(which) {
         document.getElementById('modal-bg').style.display = 'flex';
         document.getElementById('modal-reject').style.display = (which === 'reject') ? 'flex' : 'none';
         document.getElementById('modal-request-revision').style.display = (which === 'request-revision') ? 'flex' : 'none';
+        document.getElementById('modal-delete').style.display = (which === 'delete') ? 'flex' : 'none';
     }
 
     function hideModal() {
         document.getElementById('modal-bg').style.display = 'none';
         document.getElementById('modal-reject').style.display = 'none';
         document.getElementById('modal-request-revision').style.display = 'none';
+        document.getElementById('modal-delete').style.display = 'none';
     }
 
     document.addEventListener('DOMContentLoaded', function() {
+        function openSubmissionModal(submissionType, submissionId) {
+            var modalId = '';
+            var inputId = '';
+            if (submissionType === 'final') {
+                modalId = 'modal-final';
+                inputId = 'id_final_file';
+            } else if (submissionType === 'event') {
+                modalId = 'modal-event';
+                inputId = 'id_image_event';
+            } else {
+                modalId = 'modal-file';
+                inputId = 'id_file_file';
+            }
+            
+            var modal = document.getElementById(modalId);
+            if (modal) {
+                modal.style.display = 'flex';
+                
+                // Clear state when opening modal
+                const uploadArea = modal.querySelector('.upload-area .upload-text');
+                if (uploadArea) uploadArea.textContent = 'Click to upload';
+                
+                // Clear the actual file input field
+                const fileInput = document.getElementById(inputId);
+                if (fileInput) fileInput.value = '';
+
+                var input = modal.querySelector('input[name="submission_id"]');
+                if (input) input.value = submissionId;
+            }
+        }
+
+        // Use change listener to update the upload area text
+        document.querySelectorAll('.file-input').forEach(input => {
+            input.addEventListener('change', function(event) {
+                 const fileName = event.target.files[0] ? event.target.files[0].name : 'Click to upload';
+                 const uploadArea = event.target.closest('.upload-area').querySelector('.upload-text');
+                 if (uploadArea) uploadArea.textContent = fileName;
+            });
+        });
+
+        // Use native form submission with unified validation
+        document.querySelectorAll('.submission-form').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                let valid = true;
+                let firstError = null;
+                let errorQueue = [];
+                
+                // Remove previous errors
+                this.querySelectorAll('.field-validation-error').forEach(el => el.remove());
+                this.querySelectorAll('.error-input').forEach(el => el.classList.remove('error-input'));
+                
+                // Get all required fields
+                const fields = Array.from(this.querySelectorAll('input[required], select[required], textarea[required]'));
+                
+                fields.forEach(field => {
+                    let label = '';
+                    const labelEl = field.closest('.form-group')?.querySelector('label');
+                    if (labelEl) label = labelEl.textContent.replace(/\*/g, '').replace(/:/g, '').trim();
+                    if (!label) label = field.name || field.id || 'Field';
+                    
+                    let errorMsg = '';
+                    
+                    if (field.type === 'file' && !field.files.length) {
+                        errorMsg = `${label} is required.`;
+                    } else if (field.tagName === 'SELECT' && (!field.value || field.value === '')) {
+                        errorMsg = `${label} is required.`;
+                    } else if (field.type === 'number' && !field.value) {
+                        errorMsg = `${label} is required.`;
+                    } else if ((field.tagName === 'INPUT' || field.tagName === 'TEXTAREA') && field.type !== 'file' && field.type !== 'number' && !field.value.trim()) {
+                        errorMsg = `${label} is required.`;
+                    }
+                    
+                    if (errorMsg) {
+                        valid = false;
+                        field.classList.add('error-input');
+                        errorQueue.push({field, message: errorMsg});
+                        if (!firstError) firstError = field;
+                    }
+                });
+                
+                // Validate checkboxes for Final Submission (at least one must be checked)
+                if (this.closest('#modal-final')) {
+                    const checkboxes = this.querySelectorAll('input[type="checkbox"]');
+                    const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
+                    if (!anyChecked) {
+                        valid = false;
+                        const checklistGroup = this.querySelector('.chcklist');
+                        if (checklistGroup) {
+                            const err = document.createElement('div');
+                            err.className = 'field-validation-error';
+                            err.textContent = 'At least one action must be selected.';
+                            err.style.color = '#E53E3E';
+                            err.style.fontSize = '0.9rem';
+                            err.style.marginTop = '0.25rem';
+                            err.style.alignSelf = 'center';
+                            err.style.marginLeft = '1rem';
+                            checklistGroup.appendChild(err);
+                            if (!firstError) firstError = checkboxes[0];
+                        }
+                    }
+                }
+                
+                // Render errors
+                errorQueue.forEach(errObj => {
+                    const err = document.createElement('div');
+                    err.className = 'field-validation-error';
+                    err.textContent = errObj.message;
+                    err.style.color = '#E53E3E';
+                    err.style.fontSize = '0.9rem';
+                    err.style.marginTop = '0.25rem';
+                    err.style.alignSelf = 'center';
+                    err.style.marginLeft = '1rem';
+                    errObj.field.closest('.form-group').appendChild(err);
+                });
+                
+                if (!valid) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (firstError && typeof firstError.focus === 'function') firstError.focus();
+                    return false;
+                }
+                
+                handleSubmission(e);
+            });
+        });
+        
+        // Validation for Reject and Revision modals
+        document.querySelectorAll('#modal-reject form, #modal-request-revision form').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                let valid = true;
+                let firstError = null;
+                
+                // Remove previous errors
+                this.querySelectorAll('.field-validation-error').forEach(el => el.remove());
+                this.querySelectorAll('.error-input').forEach(el => el.classList.remove('error-input'));
+                
+                const reasonField = this.querySelector('textarea[name="reason"]');
+                if (reasonField && !reasonField.value.trim()) {
+                    valid = false;
+                    reasonField.classList.add('error-input');
+                    const err = document.createElement('div');
+                    err.className = 'field-validation-error';
+                    err.textContent = 'Reason is required.';
+                    err.style.color = '#E53E3E';
+                    err.style.fontSize = '0.9rem';
+                    err.style.marginTop = '0.25rem';
+                    err.style.alignSelf = 'center';
+                    err.style.marginLeft = '1rem';
+                    reasonField.parentNode.appendChild(err);
+                    firstError = reasonField;
+                }
+                
+                if (!valid) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (firstError && typeof firstError.focus === 'function') firstError.focus();
+                    return false;
+                }
+            });
+        });
+        
+        var submitBtn = document.getElementById('submit-btn');
+        var submitRevisionBtn = document.getElementById('submit-revision-btn');
+        
+        if (submitBtn) {
+            submitBtn.addEventListener('click', function() {
+                var type = this.getAttribute('data-submission-type');
+                var id = this.getAttribute('data-submission-id');
+                openSubmissionModal(type, id);
+            });
+        }
+        
+        if (submitRevisionBtn) {
+            submitRevisionBtn.addEventListener('click', function() {
+                var type = this.getAttribute('data-submission-type');
+                var id = this.getAttribute('data-submission-id');
+                openSubmissionModal(type, id);
+            });
+        }
+
+        document.querySelectorAll('.close-modal').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                btn.closest('.submission-modal') ? btn.closest('.submission-modal').style.display = 'none' : hideModal();
+            });
+        });
+        
+        document.querySelectorAll('.submission-modal .cancel-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                btn.closest('.submission-modal').style.display = 'none';
+            });
+        });
+        
+        document.querySelectorAll('.submission-modal').forEach(function(modal) {
+            modal.addEventListener('mousedown', function(e) {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        });
+        
+        window.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.submission-modal').forEach(function(modal) {
+                    modal.style.display = 'none';
+                });
+                hideModal();
+            }
+        });
+
         var rejectBtn = document.getElementById('reject-btn');
         var requestRevisionBtn = document.getElementById('request-revision-btn');
+        var deleteBtn = document.getElementById('delete-btn');
         if (rejectBtn) rejectBtn.onclick = function() { showModal('reject'); };
         if (requestRevisionBtn) requestRevisionBtn.onclick = function() { showModal('request-revision'); };
-        // Cancel buttons
+        if (deleteBtn) deleteBtn.onclick = function() { showModal('delete'); };
         var cancelReject = document.getElementById('cancel-reject');
         var cancelRequestRevision = document.getElementById('cancel-request-revision');
+        var cancelDelete = document.getElementById('cancel-delete');
         if (cancelReject) cancelReject.onclick = hideModal;
         if (cancelRequestRevision) cancelRequestRevision.onclick = hideModal;
-        // Hide modal when clicking outside
-        document.getElementById('modal-bg').addEventListener('click', function(e) {
-            if (e.target === this) hideModal();
-        });
+        if (cancelDelete) cancelDelete.onclick = hideModal;
+        var modalBg = document.getElementById('modal-bg');
+        if (modalBg) {
+            modalBg.addEventListener('click', function(e) {
+                if (e.target === this && !e.target.querySelector('.modal[style*="flex"]')) {
+                    hideModal();
+                }
+            });
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const success = urlParams.get('success');
+        const action = urlParams.get('action');
+        const title = urlParams.get('title');
+
+        if (success === 'true' && action === 'submit') {
+            const toast = document.createElement('div');
+            toast.id = 'successToast';
+            toast.style.cssText = 'display:block;position:fixed;top:20px;right:20px;background:#10b981;color:white;padding:1rem 1.5rem;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:10000;font-size:1rem;font-weight:500;min-width:300px;';
+            toast.innerHTML = `
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                    <i class="fa-solid fa-check-circle" style="font-size:1.5rem;"></i>
+                    <div>
+                        <div style="font-weight:600;margin-bottom:0.25rem;">Submitted Successfully!</div>
+                        <div style="font-size:0.875rem;opacity:0.9;">${title ? decodeURIComponent(title) : 'Submission'}</div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(toast);
+
+            setTimeout(function() {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s';
+                setTimeout(function() {
+                    toast.remove();
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }, 300);
+            }, 4000);
+        }
     });
 </script>
 

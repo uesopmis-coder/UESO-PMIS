@@ -1,62 +1,476 @@
+from django.contrib import messages
 from django.http import JsonResponse
-from django.shortcuts import render, redirect
-from django.contrib.auth import login, logout, authenticate, get_user_model
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import login, logout, authenticate, get_user_model, update_session_auth_hash
+from django.contrib.auth.decorators import login_required
+from django.contrib.messages import get_messages
 from django.core.mail import send_mail
+from django.db.models import Q
+from django.views.decorators.cache import never_cache
+from django.http import HttpResponseNotAllowed
+from django.views.decorators.http import require_GET, require_POST
+from django.utils import timezone
 
-from system.users.models import College
+import logging
+
+from system.users.models import College, Campus
 from system.users.decorators import role_required
-from .forms import LoginForm, ClientRegistrationForm, FacultyRegistrationForm, ImplementerRegistrationForm
+from system.utils.email_utils import async_send_mail, async_send_verification_code
+from django.core.paginator import Paginator
+from django.urls import reverse
+from django.http import HttpResponseRedirect
+from urllib.parse import urlencode, quote
+from .forms import LoginForm, ClientRegistrationForm, FacultyRegistrationForm, ImplementerRegistrationForm, UnifiedRegistrationForm
 
 import random
+from django.conf import settings
+from shared.request.models import ClientRequest
+from shared.projects.models import Project
+
+from .models import User, UserRoleHistory
+from .services import serialize_user_data
+
+
+CODE_TTL_SECONDS = 600  # 10 minutes
+
+LOGIN_2FA_ISSUED_AT_KEY = 'login_2fa_issued_at'
+PASSWORD_RESET_CODE_ISSUED_AT_KEY = 'password_reset_code_issued_at'
+REGISTRATION_CODE_ISSUED_AT_KEY = 'registration_2fa_issued_at'
+
+PASSWORD_RESET_VERIFIED_KEY = 'password_reset_code_verified'
+PROFILE_CHANGE_VERIFIED_KEY = 'profile_change_code_verified'
+PROFILE_CHANGE_VERIFIED_USER_KEY = 'profile_change_verified_user_id'
+PROFILE_CHANGE_VERIFIED_EMAIL_KEY = 'profile_change_verified_email'
+
+
+def _is_psu_email(email: str) -> bool:
+    """Normalize email and check PSU domain."""
+    return (email or '').strip().lower().endswith('@psu.palawan.edu.ph')
+
+
+def is_google_account(user) -> bool:
+    """Return True if this user is linked to Google OAuth via python-social-auth.
+
+    NOTE: Do not use has_usable_password() as the sole signal. Users can have
+    both a usable password and a linked Google login (account linking).
+    """
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    try:
+        # Provided by social_django (UserSocialAuth reverse relation)
+        return user.social_auth.filter(provider='google-oauth2').exists()
+    except Exception:
+        # Fail closed for auth-provider detection.
+        return False
+
+
+def needs_google_role_selection(user) -> bool:
+    """Return True when a Google-linked non-PSU user still needs to choose a role."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if not is_google_account(user):
+        return False
+    if _is_psu_email(getattr(user, 'email', '')):
+        return False
+    return getattr(user, 'role', None) == User.Role.CLIENT and not getattr(user, 'google_role_selected', False)
+
+@never_cache
+@require_GET
+def health_check(request):
+    """Lightweight healthcheck for Railway"""
+    return JsonResponse({"status": "healthy", "service": "WBPMISUESO"}, status=200)
+
+def get_role_constants():
+    ADMIN_ROLES = ["VP", "DIRECTOR", "UESO"]
+    SUPERUSER_ROLES = ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]
+    FACULTY_ROLE = ["FACULTY", "IMPLEMENTER"]
+    COORDINATOR_ROLE = ["COORDINATOR"]
+    return ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE
+
+def get_templates(request):
+    user_role = getattr(request.user, 'role', None)
+    if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
+        base_template = "base_internal.html"
+    else:
+        base_template = "base_public.html"
+    return base_template
+
+
+def create_user_log(user, action, target_user, details, is_notification=False):
+    from system.logs.models import LogEntry
+    from django.urls import reverse
+    
+    LogEntry.objects.create(
+        user=user,
+        action=action,
+        model='User',
+        object_id=target_user.id,
+        object_repr=str(target_user),
+        details=details,
+        url=reverse('user_details', kwargs={'id': target_user.id}) if action != 'DELETE' else '',
+        is_notification=is_notification
+    )
+
+
+def _current_timestamp() -> int:
+    return int(timezone.now().timestamp())
+
+
+def _set_code_with_expiry(request, code_key: str, issued_at_key: str, code: str) -> None:
+    request.session[code_key] = code
+    request.session[issued_at_key] = _current_timestamp()
+
+
+def _is_code_expired(request, issued_at_key: str, ttl_seconds: int = CODE_TTL_SECONDS) -> bool:
+    issued_at = request.session.get(issued_at_key)
+    if issued_at is None:
+        return True
+    try:
+        issued_at_int = int(issued_at)
+    except (TypeError, ValueError):
+        return True
+    return (_current_timestamp() - issued_at_int) > ttl_seconds
+
+
+def _clear_login_2fa_session(request) -> None:
+    for key in ['login_2fa_code', LOGIN_2FA_ISSUED_AT_KEY, 'pending_login_user_id', 'pending_login_backend', 'remember_me']:
+        request.session.pop(key, None)
+
+
+def _clear_password_reset_code_data(request) -> None:
+    for key in ['password_reset_code', 'password_reset_email', PASSWORD_RESET_CODE_ISSUED_AT_KEY, PASSWORD_RESET_VERIFIED_KEY, 'code_verified']:
+        request.session.pop(key, None)
+
+
+def _clear_profile_change_verification(request) -> None:
+    for key in [PROFILE_CHANGE_VERIFIED_KEY, PROFILE_CHANGE_VERIFIED_USER_KEY, PROFILE_CHANGE_VERIFIED_EMAIL_KEY]:
+        request.session.pop(key, None)
+
+
+def _clear_registration_code_session(request) -> None:
+    for key in ['2fa_code', REGISTRATION_CODE_ISSUED_AT_KEY]:
+        request.session.pop(key, None)
+
 
 ####################################################################################################
 
-# Login, Logout, Forgot Password, and Role-Based Redirection Views
+
 def login_view(request):
-    logout(request)
     if request.method == 'POST':
-        form = LoginForm(request, data=request.POST)
-        if form.is_valid():
-            user = authenticate(request, email=form.cleaned_data.get('username'), password=form.cleaned_data.get('password'))
-            if user:
-                login(request, user)
-                return redirect('role_redirect')
+        try:
+            form = LoginForm(request, data=request.POST)
+            if form.is_valid():
+                user = authenticate(request, email=form.cleaned_data.get('username'), password=form.cleaned_data.get('password'))
+                if user:
+                    code = str(random.randint(100000, 999999))
+
+                    # Send 2FA code via email ASYNCHRONOUSLY
+                    try:
+                        async_send_verification_code(user.email, code)
+                    except Exception:
+                        # Avoid leaking internal details and avoid logging the code
+                        pass
+
+                    _set_code_with_expiry(request, 'login_2fa_code', LOGIN_2FA_ISSUED_AT_KEY, code)
+                    request.session['pending_login_user_id'] = user.id
+                    request.session['pending_login_backend'] = getattr(user, 'backend', None) or settings.AUTHENTICATION_BACKENDS[0]
+                    request.session['remember_me'] = request.POST.get('remember') == 'on'
+
+                    # Never return the verification code to the client.
+                    return JsonResponse({'success': True})
+            else:
+                return JsonResponse({'success': False, 'error': 'Invalid email or password.'})
+        except Exception:
+            logging.getLogger(__name__).exception("Unexpected error during login initiation")
+            return JsonResponse({'success': False, 'error': 'Unable to process sign in right now. Please try again.'}, status=500)
     else:
         form = LoginForm()
     return render(request, 'users/login.html', {'form': form})
+
+
+def verify_login_2fa_view(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    code_entered = request.POST.get('code')
+    code_sent = request.session.get('login_2fa_code')
+    user_id = request.session.get('pending_login_user_id')
+    backend = request.session.get('pending_login_backend')
+    remember_me = request.session.get('remember_me', False)
+
+    if _is_code_expired(request, LOGIN_2FA_ISSUED_AT_KEY):
+        _clear_login_2fa_session(request)
+        return JsonResponse({'success': False, 'error': 'Verification code expired. Please login again.'})
+
+    if code_entered == code_sent and user_id:
+        User = get_user_model()
+        try:
+            user = User.objects.get(id=user_id)
+            user.backend = backend
+
+            # IMPORTANT: Flush the temporary session BEFORE final login
+            request.session.flush()
+
+            # Log the user in (creates a new session)
+            login(request, user)
+
+            # Ensure Django 5.x is satisfied (avoid SessionInterrupted)
+            request.session.cycle_key()
+
+            # Set a message to show reminders on redirect
+            messages.info(request, "SHOW_REMINDERS")
+
+            # Set session expiry on the NEW session
+            if remember_me:
+                request.session.set_expiry(1209600)  # 14 days
+            else:
+                request.session.set_expiry(0)  # browser session
+
+            return JsonResponse({'success': True})
+        except User.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User not found.'})
+
+    return JsonResponse({'success': False, 'error': 'Invalid verification code.'})
+
+
 
 def logout_view(request):
     logout(request)
     return redirect('login')
 
+
+def session_test_view(request):
+    context = {
+        'session_expiry': request.session.get_expiry_age(),
+        'expires_at_browser_close': request.session.get_expire_at_browser_close(),
+    }
+    return render(request, 'users/session_test.html', context)
+
+
 def forgot_password_view(request):
     logout(request)
-    if request.method == 'POST':
-        email = request.POST.get('email')
-        # Handle password reset logic here
     return render(request, 'users/forgot_password.html')
+
+
+def send_password_reset_code_view(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    email = (request.POST.get('email') or '').strip()
+    if not email:
+        return JsonResponse({'success': False, 'error': 'Email is required.'})
+
+    _clear_password_reset_code_data(request)
+    _clear_profile_change_verification(request)
+
+    # Avoid account enumeration: always return success.
+    User = get_user_model()
+    user = User.objects.filter(email=email).first()
+    if not user:
+        return JsonResponse({'success': True})
+
+    code = str(random.randint(100000, 999999))
+
+    # Send password reset code via email ASYNCHRONOUSLY
+    try:
+        from system.utils.email_utils import async_send_password_reset_code
+        async_send_password_reset_code(email, code)
+    except Exception:
+        # Avoid leaking internal details and avoid logging the code
+        pass
+
+    _set_code_with_expiry(request, 'password_reset_code', PASSWORD_RESET_CODE_ISSUED_AT_KEY, code)
+    request.session['password_reset_email'] = email
+
+    # Never return the reset code to the client.
+    return JsonResponse({'success': True})
+
+
+def verify_reset_code_view(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    verify_only = str(request.POST.get('verify_only', '')).lower() in {'1', 'true', 'yes', 'on'}
+    if verify_only and not getattr(request.user, 'is_authenticated', False):
+        return JsonResponse({'success': False, 'error': 'Authentication required.'}, status=403)
+
+    code_entered = request.POST.get('code')
+    code_sent = request.session.get('password_reset_code')
+
+    if not code_entered:
+        return JsonResponse({'success': False, 'error': 'Code is required.'})
+
+    if _is_code_expired(request, PASSWORD_RESET_CODE_ISSUED_AT_KEY):
+        _clear_password_reset_code_data(request)
+        _clear_profile_change_verification(request)
+        return JsonResponse({'success': False, 'error': 'Verification code expired. Please request a new one.'})
+
+    if code_entered == code_sent and code_sent:
+        if verify_only:
+            request.session[PROFILE_CHANGE_VERIFIED_KEY] = True
+            request.session[PROFILE_CHANGE_VERIFIED_USER_KEY] = request.user.id
+            request.session[PROFILE_CHANGE_VERIFIED_EMAIL_KEY] = request.session.get('password_reset_email')
+            request.session.pop(PASSWORD_RESET_VERIFIED_KEY, None)
+            request.session.pop('code_verified', None)
+        else:
+            request.session[PASSWORD_RESET_VERIFIED_KEY] = True
+            request.session.pop(PROFILE_CHANGE_VERIFIED_KEY, None)
+            request.session.pop(PROFILE_CHANGE_VERIFIED_USER_KEY, None)
+            request.session.pop(PROFILE_CHANGE_VERIFIED_EMAIL_KEY, None)
+        return JsonResponse({'success': True})
+
+    return JsonResponse({'success': False, 'error': 'Invalid verification code.'})
+
+
+def reset_password_view(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    new_password = request.POST.get('new_password')
+    email = request.session.get('password_reset_email')
+    code_verified = request.session.get(PASSWORD_RESET_VERIFIED_KEY, False)
+
+    if not new_password:
+        return JsonResponse({'success': False, 'error': 'New password is required.'})
+
+    if _is_code_expired(request, PASSWORD_RESET_CODE_ISSUED_AT_KEY):
+        _clear_password_reset_code_data(request)
+        return JsonResponse({'success': False, 'error': 'Verification code expired. Please request a new one.'})
+
+    if not code_verified:
+        return JsonResponse({'success': False, 'error': 'Please verify your code first.'})
+
+    if not email:
+        return JsonResponse({'success': False, 'error': 'Session expired. Please start over.'})
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(email=email)
+        user.set_password(new_password)
+        user.save()
+
+        create_user_log(
+            user=user,
+            action='UPDATE',
+            target_user=user,
+            details="Password reset via forgot password",
+            is_notification=False
+        )
+    except User.DoesNotExist:
+        # Avoid account enumeration.
+        pass
+    finally:
+        _clear_password_reset_code_data(request)
+
+    return JsonResponse({'success': True})
+
+def is_google_profile_incomplete(user):
+    """
+    Check if a Google-authenticated user has incomplete profile information.
+    Returns True if profile needs completion.
+    """
+    if not user:
+        return False
+    
+    # Only check Google-linked users
+    if not is_google_account(user):
+        return False
+    
+    # Check if user has placeholder names (indicates Google sign-in)
+    if user.given_name in ['Google', ''] or user.last_name in ['User', '']:
+        return True
+    
+    # Check required fields based on role
+    if user.role == User.Role.FACULTY:
+        # Faculty needs: contact_no, college, degree, expertise, valid_id
+        if not user.contact_no or not user.college or not user.degree or not user.expertise or not user.valid_id:
+            return True
+    elif user.role == User.Role.IMPLEMENTER:
+        # Implementer needs: contact_no, degree, expertise, valid_id
+        if not user.contact_no or not user.degree or not user.expertise or not user.valid_id:
+            return True
+    elif user.role == User.Role.CLIENT:
+        # Client needs: contact_no, company, industry, valid_id
+        if not user.contact_no or not user.company or not user.industry or not user.valid_id:
+            return True
+    
+    return False
+
 
 def role_redirect(request):
     role = getattr(request.user, 'role', None)
-        
+    
+    # Google-auth flow guards
+    if request.user.is_authenticated and is_google_account(request.user):
+        User = get_user_model()
+        is_psu_email = _is_psu_email(request.user.email)
+
+        # PSU emails are auto-assigned FACULTY
+        if is_psu_email:
+            fields_to_update = []
+            if request.user.role != User.Role.FACULTY:
+                request.user.role = User.Role.FACULTY
+                fields_to_update.append('role')
+            if not request.user.google_role_selected:
+                request.user.google_role_selected = True
+                fields_to_update.append('google_role_selected')
+            if not request.user.is_confirmed:
+                request.user.is_confirmed = True
+                fields_to_update.append('is_confirmed')
+            if fields_to_update:
+                request.user.save(update_fields=fields_to_update)
+        else:
+            if needs_google_role_selection(request.user):
+                return redirect('select_google_role')
+
+        # Profile completion is required for Google-linked users
+        if request.session.get('google_profile_incomplete', False):
+            request.session.pop('google_profile_incomplete', None)
+            return redirect('complete_google_profile')
+
+        if is_google_profile_incomplete(request.user):
+            return redirect('complete_google_profile')
+    
+    # Check for one-time reminder flag from login
+    storage = get_messages(request)
+    show_reminders = any(str(msg) == "SHOW_REMINDERS" for msg in storage)
+
+    # Determine target URL based on role
     if role in ["IMPLEMENTER", "CLIENT", "FACULTY"]:
-        return redirect("home")
+        target = "home"
     elif role in ["VP", "DIRECTOR", "UESO", "COORDINATOR", "DEAN", "PROGRAM_HEAD"]:
-        return redirect("dashboard")
+        target = "dashboard"
     else:
-        return redirect("home")
+        target = "home"
+
+    # If reminders requested, append a one-time URL flag
+    if show_reminders:
+        return redirect(f"{reverse(target)}?reminders=1")
+
+    # Otherwise simple redirect
+    return redirect(target)
 
 def home(request):
-    return render(request, 'base_public.html')  # extends base_public.html
+    return render(request, 'base_public.html')
 
 def dashboard(request):
-    return render(request, 'base_internal.html')  # extends base_internal.html
+    return render(request, 'base_internal.html')
 
 ####################################################################################################
 
-# Registration Views for Different User Types
 
 def check_email_view(request):
+    if request.method != 'GET':
+        return JsonResponse({'exists': False}, status=405)
+
+    # Prevent public email enumeration. This endpoint is intended for internal/admin UX.
+    if not getattr(request.user, 'is_authenticated', False):
+        return JsonResponse({'exists': False})
+
+    allowed_roles = {"VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"}
+    if not (getattr(request.user, 'is_superuser', False) or getattr(request.user, 'is_staff', False) or getattr(request.user, 'role', None) in allowed_roles):
+        return JsonResponse({'exists': False})
+
     email = request.GET.get('email', '').strip()
     exists = False
     if email:
@@ -64,242 +478,502 @@ def check_email_view(request):
         exists = User.objects.filter(email=email).exists()
     return JsonResponse({'exists': exists})
 
+
+@login_required
+def select_google_role_view(request):
+    """
+    Role selection view for Google-authenticated users with non-PSU emails.
+    Only shows IMPLEMENTER and CLIENT options (FACULTY is auto-assigned for PSU emails).
+    """
+    User = get_user_model()
+    
+    # Only allow Google-linked users
+    if not is_google_account(request.user):
+        return redirect('role_redirect')
+    
+    # PSU emails are automatically assigned FACULTY - redirect them away
+    is_psu_email = _is_psu_email(request.user.email)
+    if is_psu_email:
+        # Ensure PSU email users have FACULTY role
+        fields_to_update = []
+        if request.user.role != User.Role.FACULTY:
+            request.user.role = User.Role.FACULTY
+            fields_to_update.append('role')
+        if not request.user.google_role_selected:
+            request.user.google_role_selected = True
+            fields_to_update.append('google_role_selected')
+        if not request.user.is_confirmed:
+            request.user.is_confirmed = True
+            fields_to_update.append('is_confirmed')
+        if fields_to_update:
+            request.user.save(update_fields=fields_to_update)
+        # Redirect to profile completion
+        return redirect('complete_google_profile')
+    
+    # If role already set and selection recorded, proceed to completion/redirect
+    if request.user.google_role_selected:
+        if is_google_profile_incomplete(request.user):
+            return redirect('complete_google_profile')
+        return redirect('role_redirect')
+    
+    if request.method == 'POST':
+        selected_role = request.POST.get('role')
+        
+        # Only IMPLEMENTER and CLIENT are valid (PSU emails are auto-assigned FACULTY)
+        valid_roles = [User.Role.IMPLEMENTER, User.Role.CLIENT]
+        
+        if selected_role in valid_roles:
+            # Update user role
+            request.user.role = selected_role
+            request.user.google_role_selected = True
+            request.user.save()
+            
+            # Log the role selection
+            create_user_log(
+                user=request.user,
+                action='UPDATE',
+                target_user=request.user,
+                details=f"Selected role via Google Sign-In: {request.user.get_role_display()}",
+                is_notification=False
+            )
+            
+            # Redirect to profile completion
+            return redirect('complete_google_profile')
+        else:
+            return render(request, 'users/select_google_role.html', {
+                'error': 'Please select a valid role.',
+                'user': request.user,
+            })
+    
+    return render(request, 'users/select_google_role.html', {
+        'user': request.user,
+    })
+
+
+@login_required
+def cancel_google_signup(request):
+    """
+    Cancel Google signup: delete the account if role not yet selected and log out.
+    This prevents half-created accounts when the user backs out.
+    """
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+
+    user = request.user
+    is_google = is_google_account(user)
+    is_psu = _is_psu_email(user.email) if user.email else False
+
+    if is_google:
+        if not is_psu:
+            # Non-PSU: force role re-selection next login
+            user.role = User.Role.CLIENT
+            user.google_role_selected = False
+            user.contact_no = ''
+            user.company = ''
+            user.industry = ''
+            user.college = None
+            user.degree = ''
+            user.expertise = ''
+            if getattr(user, 'valid_id', None):
+                user.valid_id.delete(save=False)
+            user.save()
+        else:
+            # PSU: keep Faculty assignment
+            user.role = User.Role.FACULTY
+            user.google_role_selected = True
+            user.is_confirmed = True
+            user.save()
+
+    logout(request)
+    return redirect('login')
+
+
 def register_view(request):
     logout(request)
+    for key in ['pending_user_id', '2fa_code', REGISTRATION_CODE_ISSUED_AT_KEY, 'registration_role', 'registration_data']:
+        request.session.pop(key, None)
     return render(request, 'users/register.html')
 
-def registration_client_view(request):
+
+def send_verification_code_view(request):
+    """Send verification code to email without creating user - ASYNC VERSION"""
+    if request.method == 'POST':
+        email = (request.POST.get('email') or '').strip()
+        role = request.POST.get('role')
+
+        if not email or not role:
+            return JsonResponse({'success': False, 'error': 'Email and role are required.'})
+
+        # Force PSU emails to Faculty role
+        if _is_psu_email(email):
+            role = 'FACULTY'
+
+        User = get_user_model()
+        if User.objects.filter(email=email).exists():
+            return JsonResponse({'success': False, 'error': 'This email is already registered.'})
+
+        # Store all form data in session for later use
+        registration_data = {}
+        for key in request.POST:
+            if key not in ['csrfmiddlewaretoken', 'verification_code']:
+                registration_data[key] = request.POST.get(key)
+        
+        # Always generate the code
+        code = str(random.randint(100000, 999999))
+
+        # Try to send asynchronously, fallback to sync if needed
+        sent = False
+        try:
+            async_send_verification_code(email, code)
+            sent = True
+        except Exception as e:
+            try:
+                send_mail(
+                    'Your Verification Code',
+                    f'Your verification code is: {code}\n\nThis code will expire in 10 minutes.',
+                    'noreply@yourdomain.com',
+                    [email],
+                    fail_silently=False,
+                )
+                sent = True
+            except Exception as e2:
+                pass
+
+        # Always set session variables if sent
+        if sent:
+            _set_code_with_expiry(request, '2fa_code', REGISTRATION_CODE_ISSUED_AT_KEY, code)
+            request.session['pending_email'] = email
+            request.session['registration_role'] = role
+            request.session['registration_data'] = registration_data
+            # Never return the verification code to the client.
+            return JsonResponse({'success': True, 'role': role})
+        else:
+            return JsonResponse({'success': False, 'error': 'Failed to send verification code.'})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request method.'})
+
+
+@login_required
+def complete_google_profile_view(request):
+    """
+    Profile completion view for Google-authenticated users.
+    Uses the same registration form but updates existing user instead of creating new one.
+    """
+    User = get_user_model()
+    
+    # Only allow Google-linked users
+    if not is_google_account(request.user):
+        return redirect('role_redirect')
+    
+    # Check if profile is already complete
+    if not is_google_profile_incomplete(request.user):
+        return redirect('role_redirect')
+    
+    from .forms import UnifiedRegistrationForm
+    user = request.user
+
+    if _is_psu_email(user.email):
+        fields_to_update = []
+        if user.role != User.Role.FACULTY:
+            user.role = User.Role.FACULTY
+            fields_to_update.append('role')
+        if not user.google_role_selected:
+            user.google_role_selected = True
+            fields_to_update.append('google_role_selected')
+        if not user.is_confirmed:
+            user.is_confirmed = True
+            fields_to_update.append('is_confirmed')
+        if fields_to_update:
+            user.save(update_fields=fields_to_update)
+
+    role_upper = user.role.upper()
+    
+    colleges = None
+    campuses = None
+    if role_upper == 'FACULTY':
+        colleges = College.objects.select_related('campus').all()
+        campuses = Campus.objects.all()
+    
+    if request.method == 'POST':
+        verification_code = request.POST.get('verification_code')
+        
+        if verification_code:
+            # For Google users, accept the verification code (we skip email verification)
+            # The template sends '000000' as a placeholder
+            if verification_code != '000000':
+                if _is_code_expired(request, REGISTRATION_CODE_ISSUED_AT_KEY):
+                    _clear_registration_code_session(request)
+                    return JsonResponse({'success': False, 'error': 'Verification code expired. Please request a new one.'})
+                if verification_code != request.session.get('2fa_code', ''):
+                    return JsonResponse({'success': False, 'error': 'Invalid verification code.'})
+            
+            # Update existing user instead of creating new one
+            form = UnifiedRegistrationForm(request.POST, request.FILES, role=role_upper, instance=user)
+            
+            # Make password optional for Google users
+            form.fields['password'].required = False
+            form.fields['confirm_password'].required = False
+            
+            if form.is_valid():
+                # Update user with form data
+                updated_user = form.save(commit=False)
+                updated_user.role = role_upper
+                password_updated = False
+                # PSU Google accounts are auto-confirmed after successful profile completion.
+                if _is_psu_email(updated_user.email):
+                    updated_user.is_confirmed = True
+                else:
+                    updated_user.is_confirmed = user.is_confirmed
+                
+                # Only update password when explicitly provided.
+                # Otherwise, preserve the current password/auth linkage state.
+                if request.POST.get('password') and request.POST.get('password').strip():
+                    updated_user.set_password(request.POST.get('password'))
+                    password_updated = True
+                
+                if request.FILES.get('valid_id'):
+                    updated_user.valid_id = request.FILES['valid_id']
+                if request.FILES.get('profile_picture'):
+                    updated_user.profile_picture = request.FILES['profile_picture']
+                
+                updated_user.save()
+
+                # Keep the user logged in when password is updated during profile completion.
+                if password_updated:
+                    update_session_auth_hash(request, updated_user)
+
+                # Ensure the current session is authenticated for this updated user
+                # before the user clicks Continue on the completion screen.
+                auth_backend = (
+                    request.session.get('_auth_user_backend')
+                    or getattr(request.user, 'backend', None)
+                    or settings.AUTHENTICATION_BACKENDS[0]
+                )
+                login(request, updated_user, backend=auth_backend)
+                request.session.cycle_key()
+                
+                create_user_log(
+                    user=updated_user,
+                    action='UPDATE',
+                    target_user=updated_user,
+                    details=f"Completed profile via Google Sign-In",
+                    is_notification=False
+                )
+                
+                _clear_registration_code_session(request)
+                request.session.pop('registration_data', None)
+
+                if role_upper in [User.Role.IMPLEMENTER, User.Role.CLIENT]:
+                    redirect_url = reverse('home')
+                else:
+                    redirect_url = reverse('role_redirect')
+                
+                return JsonResponse({'success': True, 'redirect_url': redirect_url})
+            else:
+                return JsonResponse({'success': False, 'errors': form.errors, 'error': 'Invalid form data. Please correct the errors.'})
+        else:
+            # This shouldn't happen with the current flow, but handle it
+            return JsonResponse({'success': False, 'error': 'Verification code required.'})
+    else:
+        # Pre-fill form with existing user data
+        initial_data = {
+            'given_name': user.given_name if user.given_name not in ['Google', ''] else '',
+            'last_name': user.last_name if user.last_name not in ['User', ''] else '',
+            'middle_initial': user.middle_initial or '',
+            'suffix': user.suffix or '',
+            'email': user.email,
+            'contact_no': user.contact_no or '',
+            'sex': user.sex,
+            'college': user.college.id if user.college else '',
+            'degree': user.degree or '',
+            'expertise': user.expertise or '',
+            'company': user.company or '',
+            'industry': user.industry or '',
+            'preferred_id': user.preferred_id or '',
+        }
+        form = UnifiedRegistrationForm(initial=initial_data, role=role_upper, instance=user)
+        
+        # Make password optional for Google users (they don't need it)
+        form.fields['password'].required = False
+        form.fields['confirm_password'].required = False
+    
+    role_display = dict(User.Role.choices).get(role_upper, role_upper)
+    
+    return render(request, 'users/complete_google_profile.html', {
+        'form': form,
+        'role': role_upper,
+        'role_display': role_display,
+        'colleges': colleges,
+        'campuses': campuses,
+        'user': user,
+    })
+
+
+def registration_unified_view(request, role):
+    role_upper = role.upper()
+    valid_roles = ['FACULTY', 'IMPLEMENTER', 'CLIENT']
+   
+    if role_upper == 'THANK-YOU':
+        return redirect('thank_you')
+    elif role_upper not in valid_roles:
+        return redirect('register')
+    
+    from .forms import UnifiedRegistrationForm
     error = None
     email = None
-
+    
     if request.method == 'POST':
-        form = ClientRegistrationForm(request.POST, request.FILES)
+        verification_code = request.POST.get('verification_code')
+        
+        if verification_code:
+            code_sent = request.session.get('2fa_code')
+            registration_data = request.session.get('registration_data')
 
-        if form.is_valid() and not error:
-            code = str(random.randint(100000, 999999))
-            email = form.cleaned_data['email']
-            send_mail(
-                'Your 2FA Verification Code',
-                f'Your verification code is: {code}',
-                'noreply@yourdomain.com',
-                [email],
-                fail_silently=False,
-            )
+            if _is_code_expired(request, REGISTRATION_CODE_ISSUED_AT_KEY):
+                _clear_registration_code_session(request)
+                return JsonResponse({'success': False, 'error': 'Verification code expired. Please request a new one.'})
+            
+            if verification_code != code_sent:
+                return JsonResponse({'success': False, 'error': 'Invalid verification code.'})
+            
+            if not registration_data:
+                return JsonResponse({'success': False, 'error': 'Session expired or registration data missing. Please start registration over.'})
+                
+            data_to_save = registration_data.copy()
 
-            # Create user with is_confirmed=False
-            user = form.save(commit=False)
-            user.is_confirmed = False
-            user.username = user.email
-            user.save()
+            # Force PSU emails to Faculty role even if URL was different
+            reg_email = data_to_save.get('email', '')
+            if _is_psu_email(reg_email):
+                role_upper = 'FACULTY'
+            
+            form = UnifiedRegistrationForm(data_to_save, request.FILES, role=role_upper)
+            
+            if form.is_valid():
+                user = form.save(commit=False)
+                user.role = role_upper
+                user.username = form.cleaned_data['email']
+                user.is_confirmed = False
+                
+                user.set_password(data_to_save['password'])
+                
+                if request.FILES.get('valid_id'):
+                    user.valid_id = request.FILES['valid_id']
+                if request.FILES.get('profile_picture'):
+                    user.profile_picture = request.FILES['profile_picture']
 
-            # Store only user id and 2fa code in session
-            request.session['pending_user_id'] = user.id
-            request.session['2fa_code'] = code
-            return redirect('verify_client')
+                user.save()
+                
+                create_user_log(
+                    user=None,
+                    action='CREATE',
+                    target_user=user,
+                    details=f"Self-registered as {user.get_role_display()}",
+                    is_notification=False
+                )
+                
+                _clear_registration_code_session(request)
+                request.session.pop('pending_email', None)
+                request.session.pop('registration_role', None)
+                request.session.pop('registration_data', None)
+
+                return JsonResponse({'success': True})
+            else:
+                print("Final form validation failed after code verification:", form.errors)
+                return JsonResponse({'success': False, 'errors': form.errors, 'error': 'Invalid form data. Please refresh and try again.'})
         else:
-            return render(request, 'users/registration_client.html', {
-                'form': form,
-                'error': error,
-                'email': email,
-            })
+            form = UnifiedRegistrationForm(request.POST, request.FILES, role=role_upper)
     else:
-        form = ClientRegistrationForm()
-        return render(request, 'users/registration_client.html', {
-            'form': form,
-            'error': error,
-            'email': email,
-        })  
+        form = UnifiedRegistrationForm(role=role_upper)
+    
+    colleges = None
+    campuses = None
+    if role_upper == 'FACULTY':
+        colleges = College.objects.select_related('campus').all()
+        campuses = Campus.objects.all()
 
-def client_verify_view(request):
+    
+    return render(request, 'users/registration_unified.html', {
+        'form': form,
+        'error': error,
+        'email': email,
+        'role': role_upper,
+        'role_display': role.capitalize(),
+        'colleges': colleges,
+        'campuses': campuses,
+    })
+
+
+def verify_unified_view(request):
     error = None
+    role = "THANK-YOU"
+    
     if request.method == 'POST':
         code_entered = request.POST.get('verification_code')
         code_sent = request.session.get('2fa_code')
         pending_user_id = request.session.get('pending_user_id')
 
-        if code_entered == code_sent and pending_user_id:
-            User = get_user_model()
-            try:
-                user = User.objects.get(id=pending_user_id)
-                user.role = User.Role.CLIENT
-                user.save()
-            except User.DoesNotExist:
-                error = "User not found. Please register again."
-                return render(request, 'users/verify_client.html', {'error': error})
-            # Optionally clear session data
-            request.session.pop('pending_user_id', None)
-            request.session.pop('2fa_code', None)
-            return redirect('thank_you')
-        else:
-            error = "Invalid verification code. Please try again."
-    return render(request, 'users/verify_client.html', {'error': error})
-
-
-def registration_faculty_view(request):
-    error = None
-    email = None
-
-    if request.method == 'POST':
-        form = FacultyRegistrationForm(request.POST, request.FILES)
-
-        if form.is_valid() and not error:
-            code = str(random.randint(100000, 999999))
-            email = form.cleaned_data['email']
-            send_mail(
-                'Your 2FA Verification Code',
-                f'Your verification code is: {code}',
-                'noreply@yourdomain.com',
-                [email],
-                fail_silently=False,
-            )
-
-            # Create user with is_confirmed=False
-            user = form.save(commit=False)
-            user.is_confirmed = False
-            user.username = user.email
-            user.save()
-
-            # Store only user id and 2fa code in session
-            request.session['pending_user_id'] = user.id
-            request.session['2fa_code'] = code
-            return redirect('verify_faculty')
-        else:
-            return render(request, 'users/registration_faculty.html', {
-                'form': form,
+        if _is_code_expired(request, REGISTRATION_CODE_ISSUED_AT_KEY):
+            _clear_registration_code_session(request)
+            error = "Verification code expired. Please request a new one."
+            return render(request, 'users/verify_unified.html', {
                 'error': error,
-                'email': email,
+                'role': role,
+                'role_display': role.capitalize()
             })
-    else:
-        form = FacultyRegistrationForm()
-        return render(request, 'users/registration_faculty.html', {
-            'form': form,
-            'error': error,
-            'email': email,
-        })  
-
-
-def faculty_verify_view(request):
-    error = None
-    if request.method == 'POST':
-        code_entered = request.POST.get('verification_code')
-        code_sent = request.session.get('2fa_code')
-        pending_user_id = request.session.get('pending_user_id')
-
+        
         if code_entered == code_sent and pending_user_id:
             User = get_user_model()
             try:
                 user = User.objects.get(id=pending_user_id)
-                user.role = User.Role.FACULTY
                 user.save()
+
+                for key in ['2fa_code', REGISTRATION_CODE_ISSUED_AT_KEY, 'pending_user_id', 'registration_role']:
+                    request.session.pop(key, None)
+                
+                return redirect('thank_you')
             except User.DoesNotExist:
-                error = "User not found. Please register again."
-                return render(request, 'users/verify_faculty.html', {'error': error})
-            # Optionally clear session data
-            request.session.pop('pending_user_id', None)
-            request.session.pop('2fa_code', None)
-            return redirect('thank_you')
+                error = "User not found. Please try registering again."
         else:
             error = "Invalid verification code. Please try again."
-    return render(request, 'users/verify_faculty.html', {'error': error})
+    
+    return render(request, 'users/verify_unified.html', {
+        'error': error,
+        'role': role,
+        'role_display': role.capitalize()
+    })
 
 
-def registration_implementer_view(request):
-    error = None
-    email = None
-
-    if request.method == 'POST':
-        form = ImplementerRegistrationForm(request.POST, request.FILES)
-
-        if form.is_valid() and not error:
-            code = str(random.randint(100000, 999999))
-            email = form.cleaned_data['email']
-            send_mail(
-                'Your 2FA Verification Code',
-                f'Your verification code is: {code}',
-                'noreply@yourdomain.com',
-                [email],
-                fail_silently=False,
-            )
-
-            # Create user with is_confirmed=False
-            user = form.save(commit=False)
-            user.is_confirmed = False
-            user.username = user.email
-            user.role = user.Role.IMPLEMENTER
-            user.save()
-
-            # Store only user id and 2fa code in session
-            request.session['pending_user_id'] = user.id
-            request.session['2fa_code'] = code
-            return redirect('verify_implementer')
-        else:
-            return render(request, 'users/registration_implementer.html', {
-                'form': form,
-                'error': error,
-                'email': email,
-            })
-    else:
-        form = ImplementerRegistrationForm()
-        return render(request, 'users/registration_implementer.html', {
-            'form': form,
-            'error': error,
-            'email': email,
-        })
-
-
-def implementer_verify_view(request):
-    error = None
-    if request.method == 'POST':
-        code_entered = request.POST.get('verification_code')
-        code_sent = request.session.get('2fa_code')
-        pending_user_id = request.session.get('pending_user_id')
-
-        if code_entered == code_sent and pending_user_id:
-            User = get_user_model()
-            try:
-                user = User.objects.get(id=pending_user_id)
-                user.role = User.Role.IMPLEMENTER
-                user.save()
-            except User.DoesNotExist:
-                error = "User not found. Please register again."
-                return render(request, 'users/verify_implementer.html', {'error': error})
-            # Optionally clear session data
-            request.session.pop('pending_user_id', None)
-            request.session.pop('2fa_code', None)
-            return redirect('thank_you')
-        else:
-            error = "Invalid verification code. Please try again."
-    return render(request, 'users/verify_implementer.html', {'error': error})
-
-
-def thank_you_view(request):    
+def thank_you_view(request):
     return render(request, 'users/thank_you.html')
+
 
 ####################################################################################################
 
+
 def not_authenticated_view(request):
-    return render(request, 'users/403_not_authenticated.html', status=403)
+    return render(request, 'users/403_session_expired.html', status=403)
+
 
 def no_permission_view(request):
     return render(request, 'users/403_no_permission.html', status=403)
 
+
 def not_confirmed_view(request):
     return render(request, 'users/403_not_confirmed.html', status=403)
 
+
 ####################################################################################################
 
-from django.core.paginator import Paginator
-from django.shortcuts import get_object_or_404
 
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+@never_cache
+@role_required(allowed_roles=["VP", "DIRECTOR"], require_confirmed=True)
 def manage_user(request):
     query_params = {}
     User = get_user_model()
-    users = User.objects.all()
+    users = User.objects.select_related('college', 'college__campus').all()
 
     search = request.GET.get('search', '').strip()
     if search:
-        # Search by full name (given_name, middle_initial, last_name, suffix)
         from django.db.models import Q
         users = users.filter(
             Q(given_name__icontains=search) |
@@ -310,12 +984,12 @@ def manage_user(request):
         )
         query_params['search'] = search
 
-    # Filters
     sort_by = request.GET.get('sort_by', 'date')
     order = request.GET.get('order', 'desc')
     role = request.GET.get('role', '')
     verified = request.GET.get('verified', '')
-    date = request.GET.get('date', '')
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
     college = request.GET.get('college', '')
     campus = request.GET.get('campus', '')
 
@@ -332,17 +1006,19 @@ def manage_user(request):
     elif verified == 'false':
         users = users.filter(is_confirmed=False)
         query_params['verified'] = 'false'
-    if date:
-        users = users.filter(date_joined__date=date)
-        query_params['date'] = date
+    if date_from:
+        users = users.filter(date_joined__date__gte=date_from)
+        query_params['date_from'] = date_from
+    if date_to:
+        users = users.filter(date_joined__date__lte=date_to)
+        query_params['date_to'] = date_to
     if college:
         users = users.filter(college_id=college)
         query_params['college'] = college
     if campus:
-        users = users.filter(campus=campus)
+        users = users.filter(college__campus_id=campus)
         query_params['campus'] = campus
 
-    # Sorting
     if sort_by == 'name':
         sort_field = ['last_name', 'given_name', 'middle_initial', 'suffix']
     else:
@@ -371,12 +1047,10 @@ def manage_user(request):
     else:
         page_range = range(current - 2, current + 3)
 
-    # Roles for dropdown
     roles = list(User.Role.choices)
-    colleges = College.objects.all()
-    campuses = list(User.Campus.choices)
+    colleges = College.objects.select_related('campus').all()
+    campuses = Campus.objects.only('id', 'name').all()
 
-    # Build querystring for pagination/filter links
     from urllib.parse import urlencode
     querystring = urlencode(query_params)
 
@@ -389,7 +1063,8 @@ def manage_user(request):
         'order': order,
         'role': role,
         'verified': verified,
-        'date': date,
+        'date_from': date_from,
+        'date_to': date_to,
         'college': college,
         'campus': campus,
         'roles': roles,
@@ -401,72 +1076,68 @@ def manage_user(request):
 
 
 def user_details_view(request, id):
+    base_template = get_templates(request)
+
     User = get_user_model()
     user = get_object_or_404(User, id=id)
-    return render(request, 'users/user_details.html', {'user': user})
+    return render(request, 'users/user_details.html', {'user': user, 'base_template': base_template})
 
 
-
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+@role_required(allowed_roles=["VP", "DIRECTOR"], require_confirmed=True)
 def add_user(request):
     User = get_user_model()
     error = None
     roles = list(User.Role.choices)
     colleges = College.objects.all()
-    campus_choices = User.Campus.choices
+    campus_choices = Campus.objects.all()
 
     success = False
     if request.method == 'POST':
         data = request.POST
-        files = request.FILES
-        required_fields = ['last_name', 'given_name', 'email', 'role', 'sex', 'password']
-        missing = [f for f in required_fields if not data.get(f)]
-        if missing:
-            error = f"Missing required fields: {', '.join(missing)}"
-        elif User.objects.filter(email=data.get('email')).exists():
+        if User.objects.filter(email=data.get('email')).exists():
             error = "Email already exists."
         else:
             try:
-                user = User()
-                user.last_name = data.get('last_name', '')
-                user.given_name = data.get('given_name', '')
-                user.middle_initial = data.get('middle_initial', '')
-                user.suffix = data.get('suffix', '')
-                user.sex = data.get('sex', '')
-                user.email = data.get('email', '')
-                user.contact_no = data.get('contact_no', '')
-                user.role = data.get('role', '')
-                user.username = data.get('email', '')
+                user = User.objects.create(
+                    last_name=data.get('last_name'),
+                    given_name=data.get('given_name'),
+                    middle_initial=data.get('middle_initial'),
+                    suffix=data.get('suffix'),
+                    sex=data.get('sex'),
+                    email=data.get('email'),
+                    contact_no=data.get('contact_no'),
 
-                password = data.get('password', '')
-                user.set_password(password)
+                    role=data.get('role'),
+                    username=data.get('email'),
 
-                if files.get('valid_id'):
-                    user.valid_id = files['valid_id']
-                user.is_confirmed = True
+                    college=College.objects.get(id=data.get('college')) if data.get('college') else None,
+                    degree=data.get('degree'),
+                    expertise=data.get('expertise'),
+                    company=data.get('company'),
+                    industry=data.get('industry'),
 
-                # Role-specific fields
-                if user.role == 'IMPLEMENTER':
-                    user.degree = data.get('degree', '')
-                    user.expertise = data.get('expertise', '')
-                elif user.role == 'FACULTY':
-                    college_id = data.get('college')
-                    user.college = College.objects.get(id=college_id) if college_id else None
-                    user.campus = data.get('campus', '')
-                    user.degree = data.get('degree', '')
-                    user.expertise = data.get('expertise', '')
-                elif user.role == 'CLIENT':
-                    user.company = data.get('company', '')
-                    user.industry = data.get('industry', '')
-                elif user.role == 'DEAN' or user.role == 'PROGRAM_HEAD' or user.role == 'COORDINATOR':
-                    college_id = data.get('college')
-                    user.college = College.objects.get(id=college_id) if college_id else None
-                    user.campus = data.get('campus', '')
-
+                    is_confirmed=True,
+                    created_by=request.user,
+                )
+                user.set_password(data.get('password', ''))
+                
+                if request.FILES.get('profile_picture'):
+                    user.profile_picture = request.FILES['profile_picture']
+                
                 user.save()
+                
+                create_user_log(
+                    user=request.user,
+                    action='CREATE',
+                    target_user=user,
+                    details=f"Created by {request.user.get_role_display()} - {user.get_role_display()}",
+                    is_notification=True
+                )
+
                 success = True
             except Exception as e:
-                error = str(e)
+                logging.getLogger(__name__).exception("Error creating user")
+                error = "An unexpected error occurred while creating the user."
     return render(request, 'users/add_user.html', {
         'error': error,
         'success': success,
@@ -475,101 +1146,455 @@ def add_user(request):
         'campus_choices': campus_choices,
     })
 
-# Edit user view
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+
+@login_required
 def edit_user(request, id):
     User = get_user_model()
     user = get_object_or_404(User, id=id)
+    base_template = get_templates(request)
+    
+    can_edit_role_and_verify = request.user.role in ["VP", "DIRECTOR"]
+    can_edit_this_user = (request.user.id == user.id) or can_edit_role_and_verify
+    
+    if not can_edit_this_user:
+        return redirect('no_permission')
+    
     error = None
+    roles = list(User.Role.choices)
+    colleges = College.objects.all()
+    campus_choices = Campus.objects.all()
+
     success = False
+    email_changed = False
     if request.method == 'POST':
         data = request.POST
-        files = request.FILES
-        try:
-            user.last_name = data.get('last_name', user.last_name)
-            user.given_name = data.get('given_name', user.given_name)
-            user.middle_initial = data.get('middle_initial', user.middle_initial)
-            user.suffix = data.get('suffix', user.suffix)
-            user.sex = data.get('sex', user.sex)
-            user.email = data.get('email', user.email)
-            user.contact_no = data.get('contact_no', user.contact_no)
-            user.role = data.get('role', user.role)
-            user.username = data.get('email', user.username)
-            if files.get('valid_id'):
-                user.valid_id = files['valid_id']
-            # Role-specific fields
-            college_id = data.get('college')
-            user.college = College.objects.get(id=college_id) if college_id else None
-            user.campus = data.get('campus', user.campus) if data.get('campus') else user.campus
-            user.degree = data.get('degree', user.degree) if data.get('degree') else user.degree
-            user.expertise = data.get('expertise', user.expertise) if data.get('expertise') else user.expertise
-            user.company = data.get('company', user.company) if data.get('company') else user.company
-            user.industry = data.get('industry', user.industry) if data.get('industry') else user.industry
-            # Password update (optional)
-            password = data.get('password', '')
-            if password:
-                user.set_password(password)
-            user.save()
-            success = True
-        except Exception as e:
-            error = str(e)
-    colleges = College.objects.all()
-    campus_choices = User.Campus.choices
+        
+        new_email = data.get('email')
+        old_email = user.email
+        password = data.get('password', '').strip()
+        
+        email_is_changing = (new_email != old_email)
+        password_is_changing = bool(password)
+        
+        if email_is_changing or password_is_changing:
+            code_verified = request.session.get(PROFILE_CHANGE_VERIFIED_KEY, False)
+            verified_user_id = request.session.get(PROFILE_CHANGE_VERIFIED_USER_KEY)
+            verified_email = request.session.get(PROFILE_CHANGE_VERIFIED_EMAIL_KEY)
+            if not (code_verified and verified_user_id == request.user.id and verified_email == old_email):
+                error = "Email or password change requires verification. Please verify your code."
+                return render(request, 'users/edit_user.html', {
+                    'user': user,
+                    'error': error,
+                    'success': False,
+                    'email_changed': False,
+                    'colleges': colleges,
+                    'campus_choices': campus_choices,
+                    'roles': roles,
+                    'base_template': base_template,
+                    'can_edit_role_and_verify': can_edit_role_and_verify,
+                    'is_editing_self': request.user.id == user.id,
+                })
+        
+        if User.objects.filter(email=data.get('email')).exclude(id=user.id).exists():
+            error = "Email already exists."
+        else:
+            try:
+                changes = []
+                old_role = user.role
+                
+                user.last_name = data.get('last_name')
+                user.given_name = data.get('given_name')
+                user.middle_initial = data.get('middle_initial') or None
+                user.suffix = data.get('suffix') or None
+                posted_sex = (data.get('sex') or '').strip().upper()
+                valid_sex_values = {choice[0] for choice in User.Sex.choices}
+                if posted_sex not in valid_sex_values:
+                    error = "Invalid sex value selected."
+                    return render(request, 'users/edit_user.html', {
+                        'user': user,
+                        'error': error,
+                        'success': False,
+                        'email_changed': email_changed,
+                        'colleges': colleges,
+                        'campus_choices': campus_choices,
+                        'roles': roles,
+                        'base_template': base_template,
+                        'can_edit_role_and_verify': can_edit_role_and_verify,
+                        'is_editing_self': request.user.id == user.id,
+                    })
+                user.sex = posted_sex
+                user.contact_no = data.get('contact_no')
+                
+                if user.email != new_email:
+                    changes.append('email')
+                    email_changed = True
+                    user.email = new_email
+                    user.username = new_email
+                    
+                    try:
+                        from system.utils.email_utils import async_send_email_changed
+                        async_send_email_changed(old_email, user.get_full_name(), old_email, new_email)
+                        async_send_email_changed(new_email, user.get_full_name(), old_email, new_email)
+                    except Exception as e:
+                        pass
+
+
+                if can_edit_role_and_verify:
+                    new_role = data.get('role')
+                    if new_role and old_role != new_role:
+                        # Save role history BEFORE changing role
+                        snapshot_data = serialize_user_data(user)
+                        UserRoleHistory.objects.create(
+                            user=user,
+                            role=old_role,
+                            data_snapshot=snapshot_data,
+                            changed_by=request.user
+                        )
+                        changes.append(f'role from {user.get_role_display()} to {dict(User.Role.choices)[new_role]}')
+                        user.role = new_role
+
+                # Ensure role-specific fields are updated AFTER role change
+                current_role = user.role
+
+                if current_role == "CLIENT":
+                    user.college = None
+                    user.degree = None
+                    user.expertise = None
+                    user.company = data.get('company') or None
+                    user.industry = data.get('industry') or None
+
+                elif current_role == "FACULTY":
+                    college_id = data.get('college')
+                    user.college = College.objects.get(id=college_id) if college_id else None
+                    user.degree = data.get('degree') or None
+                    user.expertise = data.get('expertise') or None
+                    user.company = None
+                    user.industry = None
+
+                elif current_role in ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
+                    if can_edit_role_and_verify:
+                        college_id = data.get('college')
+                        user.college = College.objects.get(id=college_id) if college_id else None
+                    user.degree = None
+                    user.expertise = None
+                    user.company = None
+                    user.industry = None
+
+                elif current_role == "IMPLEMENTER":
+                    user.college = None
+                    user.degree = data.get('degree') or None
+                    user.expertise = data.get('expertise') or None
+                    user.company = None
+                    user.industry = None
+
+                else:
+                    if can_edit_role_and_verify:
+                        user.college = None
+                    user.degree = None
+                    user.expertise = None
+                    user.company = None
+                    user.industry = None
+
+
+                password = data.get('password', '').strip()
+                password_changed = False
+                if password:
+                    user.set_password(password)
+                    password_changed = True
+                    changes.append('password')
+
+                if request.FILES.get('profile_picture'):
+                    if user.profile_picture:
+                        try:
+                            user.profile_picture.delete(save=False)
+                        except:
+                            pass
+                    user.profile_picture = request.FILES['profile_picture']
+                    changes.append('profile picture')
+
+                user.save()
+
+                if password_changed and request.user.id == user.id:
+                    # Preserve current session when users change their own password.
+                    update_session_auth_hash(request, user)
+                
+                if password_changed:
+                    try:
+                        from system.utils.email_utils import async_send_password_changed
+                        async_send_password_changed(user.email, user.get_full_name(), password)
+                    except Exception as e:
+                        pass
+                
+                details = f"Edited by {request.user.get_role_display()}"
+                if changes:
+                    details += f" - Changed: {', '.join(changes)}"
+                
+                create_user_log(
+                    user=request.user,
+                    action='UPDATE',
+                    target_user=user,
+                    details=details,
+                    is_notification=True
+                )
+                
+                _clear_profile_change_verification(request)
+                _clear_password_reset_code_data(request)
+                
+                referrer = request.META.get('HTTP_REFERER', '')
+                user_full_name = quote(user.get_full_name())
+                
+                if '/details/' in referrer:
+                    redirect_url = f'/users/details/{user.id}/?success=true&action=edited&title={user_full_name}'
+                elif '/profile/' in referrer:
+                    redirect_url = f'/profile/{user.id}/?success=true&action=edited&title={user_full_name}'
+                else:
+                    if request.user.id == user.id:
+                        redirect_url = f'/profile/{user.id}/?success=true&action=edited&title={user_full_name}'
+                    else:
+                        redirect_url = f'/users/details/{user.id}/?success=true&action=edited&title={user_full_name}'
+                
+                return redirect(redirect_url)
+                
+            except Exception as e:
+                logging.getLogger(__name__).exception("Error editing user")
+                error = "An unexpected error occurred while saving changes."
+    
     return render(request, 'users/edit_user.html', {
         'user': user,
         'error': error,
-        'success': success,
+        'success': False,
+        'email_changed': email_changed,
         'colleges': colleges,
         'campus_choices': campus_choices,
+        'roles': roles,
+        'base_template': base_template,
+        'can_edit_role_and_verify': can_edit_role_and_verify,
+        'is_editing_self': request.user.id == user.id,
     })
 
 
-# Verify/Unverify user views
-from django.http import HttpResponseRedirect
-
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+@role_required(allowed_roles=["VP", "DIRECTOR"], require_confirmed=True)
+@require_POST
 def verify_user(request, id):
     User = get_user_model()
     user = get_object_or_404(User, id=id)
+    
+    if request.user.id == user.id:
+        return redirect('no_permission')
+    
     user.is_confirmed = True
     user.save()
-    return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/'))
 
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+    create_user_log(
+        user=request.user,
+        action='UPDATE',
+        target_user=user,
+        details=f"Activated by {request.user.get_role_display()}",
+        is_notification=True
+    )
+    
+    try:
+        from system.utils.email_utils import async_send_account_activated
+        async_send_account_activated(
+            user.email, 
+            user.get_full_name(), 
+            request.user.get_full_name()
+        )
+        print(f"✓ Activation email queued for {user.email}")
+    except Exception as e:
+        print(f"✗ Failed to queue activation email to {user.email}: {str(e)}")
+    
+    return redirect(f'/users/?success=true&action=confirmed&title={quote(user.get_full_name())}')
+
+
+@role_required(allowed_roles=["VP", "DIRECTOR"], require_confirmed=True)
+@require_POST
 def unverify_user(request, id):
     User = get_user_model()
     user = get_object_or_404(User, id=id)
+    
+    if request.user.id == user.id:
+        return redirect('no_permission')
+    
     user.is_confirmed = False
     user.save()
+
+    create_user_log(
+        user=request.user,
+        action='UPDATE',
+        target_user=user,
+        details=f"Deactivated by {request.user.get_role_display()}",
+        is_notification=True
+    )
+    
+    try:
+        from system.utils.email_utils import async_send_account_deactivated
+        async_send_account_deactivated(
+            user.email, 
+            user.get_full_name(), 
+            request.user.get_full_name()
+        )
+        print(f"✓ Deactivation email queued for {user.email}")
+    except Exception as e:
+        print(f"✗ Failed to queue deactivation email to {user.email}: {str(e)}")
+    
     return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/'))
 
 
-from django.http import HttpResponseRedirect
-from django.urls import reverse
-
-# Delete user view with confirmation
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+@role_required(allowed_roles=["VP", "DIRECTOR"], require_confirmed=True)
+@require_POST
 def delete_user(request, id):
     User = get_user_model()
     user = get_object_or_404(User, id=id)
+    
+    # Prevent self-deletion
+    if request.user.id == user.id:
+        return redirect('no_permission')
+
+    create_user_log(
+        user=request.user,
+        action='DELETE',
+        target_user=user,
+        details=f"Deleted by {request.user.get_role_display()}",
+        is_notification=True
+    )
+    
+    # Delete the user - Django will handle related objects based on on_delete settings
+    # The APIConnection.requested_by field has on_delete=models.SET_NULL, so it will be set to None automatically
     user.delete()
+    
     return HttpResponseRedirect(reverse('manage_user'))
+
 
 ####################################################################################################
 
-# Quick Login View for Testing Purposes
+
+def profile_role_constants():
+    HAS_COLLEGE_CAMPUS = ["FACULTY", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]
+    HAS_DEGREE_EXPERTISE = ["FACULTY", "IMPLEMENTER"]
+    HAS_COMPANY_INDUSTRY = ["CLIENT"]
+    return HAS_COLLEGE_CAMPUS, HAS_DEGREE_EXPERTISE, HAS_COMPANY_INDUSTRY
+
+
+def can_view_project(user, project):
+    if user.is_authenticated and hasattr(user, 'role'):
+        if user.role in ["UESO", "DIRECTOR", "VP"]:
+            return True
+        
+        if project.project_leader == user or user in project.providers.all():
+            return True
+        
+        if user.role in ["DEAN", "COORDINATOR", "PROGRAM_HEAD"]:
+            if user.college and project.project_leader.college == user.college:
+                return True
+    
+    return project.status == 'COMPLETED'
+
+
+def profile_view(request, id=None):
+    User = get_user_model()
+    if id:
+        try:
+            user = User.objects.get(id=id)
+        except User.DoesNotExist:
+            return redirect('profile')
+    else:
+        user = request.user
+    
+    HAS_COLLEGE_CAMPUS, HAS_DEGREE_EXPERTISE, HAS_COMPANY_INDUSTRY = profile_role_constants()
+
+    base_template = get_templates(request)
+
+    campus_display = user.campus.name if user.campus else ""
+
+    college_name = user.college.name if user.college else ""
+    college_logo = user.college.logo.url if user.college and user.college.logo else None
+
+    content_items = []
+
+    if user.role == User.Role.CLIENT:
+        from shared.request.models import ClientRequest
+        content_items = ClientRequest.objects.filter(
+            submitted_by=user
+        ).order_by('-submitted_at')
+    
+    else:
+        from shared.projects.models import Project
+        all_projects = Project.objects.filter(
+            Q(project_leader=user) | Q(providers=user)
+        ).distinct().select_related(
+            'project_leader', 'agenda'
+        ).prefetch_related(
+            'providers', 'sdgs'
+        ).order_by('-start_date')
+        
+        content_items = [p for p in all_projects if can_view_project(request.user, p)]
+
+    return render(request, 'users/profile.html', {
+        'profile_user': user,
+        'can_edit': request.user.id == user.id,
+        'campus_display': campus_display,
+        'college_name': college_name,
+        'college_logo': college_logo,
+        'content_items': content_items,
+        'content_items_count': len(content_items),
+        'base_template': base_template,
+
+        'HAS_COLLEGE_CAMPUS': HAS_COLLEGE_CAMPUS,
+        'HAS_DEGREE_EXPERTISE': HAS_DEGREE_EXPERTISE,
+        'HAS_COMPANY_INDUSTRY': HAS_COMPANY_INDUSTRY,
+    })
+
+
+@login_required
+def update_bio(request):
+    if request.method == 'POST':
+        bio = request.POST.get('bio', '').strip()
+        user = request.user
+        user.bio = bio
+        user.save(update_fields=['bio'])
+        
+    return redirect('profile')
+
+
+@login_required
+def update_profile_picture(request):
+    if request.method == 'POST' and request.FILES.get('profile_picture'):
+        user = request.user
+        user.profile_picture = request.FILES['profile_picture']
+        user.save(update_fields=['profile_picture'])
+        
+    return redirect('profile')
+
+####################################################################################################
+
+
 User = get_user_model()
+import os
 
 def quick_login(request, role):
-    from django.contrib.auth import login
-    from django.contrib.auth import authenticate
+    from django.contrib.auth import login, logout, authenticate
 
+    if os.environ.get('DEPLOYED', 'False') == 'True':
+        return redirect("login")
+
+    # Build test credentials
     username = f"{role.lower()}@example.com"
     password = "test1234"
-    
+
+    # Flush any existing session (avoids SessionInterrupted)
+    request.session.flush()
+
     user = authenticate(request, username=username, password=password)
-    if user:
-        login(request, user)
-        return redirect("role_redirect")
-    else:
-        return redirect("login") 
+    if not user:
+        return redirect("login")
+
+    login(request, user)
+
+    # Ensure Django creates a clean session key for this login
+    request.session.cycle_key()
+    
+    # Set a message to show reminders on redirect
+    messages.info(request, "SHOW_REMINDERS")
+
+    return redirect("role_redirect")

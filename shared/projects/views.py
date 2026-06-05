@@ -1,14 +1,28 @@
 from django.shortcuts import get_object_or_404, render, redirect
+from django.views.decorators.csrf import csrf_protect
+from internal.submissions.views import delete_submission
 from shared import request
-from system.users.decorators import role_required
-from .models import SustainableDevelopmentGoal, Project, ProjectEvaluation, ProjectEvent
+from system.logs.models import LogEntry
+from system.notifications.models import Notification
+from system.users.decorators import role_required, project_visibility_required
+from .models import SustainableDevelopmentGoal, Project, ProjectEvaluation, ProjectEvent, ProjectUpdate, ProjectExpense, ProjectType, ActivityEvaluation
+from internal.goals.models import Goal
 from internal.submissions.models import Submission
-from system.users.models import College, User
+from system.users.models import College, User, Campus
 from internal.agenda.models import Agenda
 from .forms import ProjectForm, ProjectEventForm
 from django.core.paginator import Paginator
 import os
 from django.db import models
+from django.db.models import Q, BooleanField, ExpressionWrapper, Sum # Added Sum
+from decimal import Decimal, InvalidOperation # Added Decimal and InvalidOperation
+from django.contrib import messages # Added messages
+from django.utils import timezone # Added timezone for use in related functions
+from django.http import HttpResponseRedirect, JsonResponse # Added for related functions
+from django.urls import reverse # Added for related functions
+from datetime import date as dtdate # Added for related functions
+from shared.budget.models import CollegeBudget # Added for budget functions
+from datetime import datetime # Added for budget functions
 
 
 def get_role_constants():
@@ -18,6 +32,44 @@ def get_role_constants():
     COORDINATOR_ROLE = ["COORDINATOR"]
     return ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE
 
+def calculate_project_budget_info(project):
+    """
+    Calculate budget information for a project.
+    Returns: (total_budget, spent_total, remaining_total)
+    This ensures consistent calculation across all views.
+    Refreshes project from database to avoid stale data.
+    Always queries expenses directly from database to ensure accuracy.
+    """
+    # Get project ID first to ensure we have it even if project object is stale
+    project_id = project.pk if hasattr(project, 'pk') else project.id
+    
+    # Get completely fresh project instance from database (not just refresh)
+    project = Project.objects.get(pk=project_id)
+    
+    # Calculate total budget from fresh project values
+    total_budget = (project.internal_budget or Decimal('0')) + (project.external_budget or Decimal('0'))
+    
+    # Recalculate spent from database to ensure accuracy
+    # This includes ALL expenses: regular expenses AND allocation expenses (created by signal handlers)
+    # Use project_id directly to ensure we're querying the correct project
+    try:
+        # Query expenses directly using project_id - this ensures we get ALL expenses for this project
+        spent_total = ProjectExpense.objects.filter(project_id=project_id).aggregate(s=Sum('amount'))['s']
+        if spent_total is None:
+            spent_total = Decimal('0')
+        else:
+            spent_total = Decimal(str(spent_total))
+    except Exception as e:
+        # Log error but don't break the page
+        import logging
+        logging.error(f"Error calculating project budget info for project {project_id}: {e}")
+        spent_total = Decimal('0')
+    
+    # Calculate remaining (ensure it's never negative)
+    remaining_total = max(Decimal('0'), total_budget - spent_total)
+    
+    return total_budget, spent_total, remaining_total
+
 def get_templates(request):
     user_role = getattr(request.user, 'role', None)
     if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
@@ -26,24 +78,53 @@ def get_templates(request):
         base_template = "base_public.html"
     return base_template
 
+
+@project_visibility_required
 def project_profile(request, pk):
+    # Check if user is authenticated and has role
+    if request.user.is_authenticated and hasattr(request.user, 'role'):
+        # Mark project alerts as viewed for faculty users
+        if request.user.role in ["FACULTY", "IMPLEMENTER"]:
+            from django.http import HttpResponseRedirect
+            from django.urls import reverse
+            project = get_object_or_404(Project, pk=pk)
+            updated = ProjectUpdate.objects.filter(user=request.user, project=project, viewed=False).update(viewed=True)
+            if updated and request.method == 'GET' and not request.GET.get('new'):
+                url = reverse('project_profile', args=[pk])
+                params = request.GET.copy()
+                params['new'] = '1'
+                url += '?' + params.urlencode()
+                return HttpResponseRedirect(url)
+    else:
+        # Non-authenticated users can only view completed projects
+        project = get_object_or_404(Project, pk=pk, status='COMPLETED')
+    
     return redirect(project_overview, pk=pk)
 
 
+@project_visibility_required
 def project_overview(request, pk):
     ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
 
-    user_role = getattr(request.user, 'role', None)
+    # Determine base template and access control
+    user_role = getattr(request.user, 'role', None) if request.user.is_authenticated else None
     if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
         base_template = "base_internal.html"
+        # Authenticated users with roles can see all projects
+        project = get_object_or_404(Project, pk=pk)
     else:
         base_template = "base_public.html"
+        # Non-authenticated users or users without admin roles can only see completed projects
+        if not request.user.is_authenticated:
+            project = get_object_or_404(Project, pk=pk, status='COMPLETED')
+        else:
+            project = get_object_or_404(Project, pk=pk)
 
-    project = get_object_or_404(Project, pk=pk)
     all_sdgs = SustainableDevelopmentGoal.objects.all()
     agendas = Agenda.objects.all()
+    project_types = ProjectType.objects.all()
 
-    if request.method == 'POST' and request.user.role in ADMIN_ROLES:
+    if request.method == 'POST' and user_role in ADMIN_ROLES:
         # Update project fields from form
         project.title = request.POST.get('title', project.title)
         project.start_date = request.POST.get('start_date', project.start_date)
@@ -54,7 +135,9 @@ def project_overview(request, pk):
                 project.agenda = Agenda.objects.get(pk=agenda_id)
             except Agenda.DoesNotExist:
                 pass
-        project.project_type = request.POST.get('project_type', project.project_type)
+        type_id = request.POST.get('project_type')
+        if type_id:
+            project.project_type_id = type_id
         project.primary_beneficiary = request.POST.get('primary_beneficiary', project.primary_beneficiary)
         project.estimated_events = request.POST.get('estimated_events', project.estimated_events)
         project.primary_location = request.POST.get('primary_location', project.primary_location)
@@ -63,6 +146,9 @@ def project_overview(request, pk):
         sdg_ids = request.POST.getlist('sdgs[]')
         if sdg_ids is not None:
             project.sdgs.set(sdg_ids)
+
+        project.updated_at = timezone.now()
+        project.updated_by = request.user
         project.save()
         # Optionally redirect to avoid resubmission
         return redirect(request.path)
@@ -75,16 +161,68 @@ def project_overview(request, pk):
         "FACULTY_ROLE": FACULTY_ROLE,
         'all_sdgs': all_sdgs,
         'agendas': agendas,
+        'project_types': project_types,
     })
 
 
+@project_visibility_required
 def project_providers(request, pk):
     ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
-    project = get_object_or_404(Project, pk=pk)
+    
+    # Determine base template and access control
+    user_role = getattr(request.user, 'role', None) if request.user.is_authenticated else None
+    
+    if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
+        base_template = "base_internal.html"
+        # Authenticated users with roles can see all projects
+        project = get_object_or_404(Project, pk=pk)
+    else:
+        base_template = "base_public.html"
+        # Non-authenticated users or users without admin roles can only see completed projects
+        if not request.user.is_authenticated:
+            project = get_object_or_404(Project, pk=pk, status='COMPLETED')
+        else:
+            project = get_object_or_404(Project, pk=pk)
+    
+    # Use queryset for exclusions and candidate logic
     providers_qs = project.providers.all()
+    # For display/pagination, prepend leader if not present
+    providers_list = list(providers_qs)
+    if project.project_leader and project.project_leader not in providers_list:
+        providers_list = [project.project_leader] + providers_list
 
-    # Handle add provider POST
-    if request.method == 'POST' and request.user.role in ADMIN_ROLES:
+    # Candidates: all confirmed users except CLIENT, not already providers and not the project leader
+    from system.users.models import User
+    exclude_ids = list(providers_qs.values_list('id', flat=True))
+    if project.project_leader:
+        exclude_ids.append(project.project_leader.id)
+    provider_candidates = User.objects.filter(
+        is_confirmed=True
+    ).exclude(role=User.Role.CLIENT).exclude(id__in=exclude_ids)
+
+    # For display/pagination, prepend leader if not present
+    providers_list = list(providers_qs)
+    if project.project_leader and project.project_leader not in providers_list:
+        providers_list = [project.project_leader] + providers_list
+
+    # Handle add/remove provider POST
+    if request.method == 'POST' and user_role in ADMIN_ROLES:
+        remove_provider_id = request.POST.get('remove_provider_id')
+        if remove_provider_id:
+            from system.users.models import User
+            try:
+                provider_to_remove = User.objects.get(pk=remove_provider_id)
+                # Never remove the project leader from providers via this action
+                if project.project_leader and provider_to_remove.id == project.project_leader.id:
+                    return redirect(request.path)
+
+                if project.providers.filter(pk=provider_to_remove.pk).exists():
+                    project.providers.remove(provider_to_remove)
+                    project.save()
+            except User.DoesNotExist:
+                pass
+            return redirect(request.path)
+
         provider_id = request.POST.get('provider_id')
         if provider_id:
             from system.users.models import User
@@ -93,30 +231,37 @@ def project_providers(request, pk):
                 if provider not in providers_qs:
                     project.providers.add(provider)
                     project.save()
+                    
+                    # Create alert for the newly added provider
+                    from .models import ProjectUpdate
+                    # Need to import timezone for ProjectUpdate creation
+                    
+                    ProjectUpdate.objects.create(
+                        user=provider,
+                        project=project,
+                        submission=None,  # No submission for provider addition alerts
+                        status='PROJECT_ASSIGNED',
+                        viewed=False,
+                        updated_at=timezone.now()
+                    )
             except User.DoesNotExist:
                 pass
         return redirect(request.path)
 
-    user_role = getattr(request.user, 'role', None)
-    if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
-        base_template = "base_internal.html"
-    else:
-        base_template = "base_public.html"
-
-    # Candidates: all confirmed faculty/implementers not already providers and not the project leader
+    # Candidates: all confirmed users except CLIENT, not already providers and not the project leader
     from system.users.models import User
     exclude_ids = list(providers_qs.values_list('id', flat=True))
     if hasattr(project, 'leader') and project.leader:
         exclude_ids.append(project.leader.id)
     provider_candidates = User.objects.filter(
-        is_confirmed=True,
-        role__in=[User.Role.FACULTY, User.Role.IMPLEMENTER]
-    ).exclude(id__in=exclude_ids)
+        is_confirmed=True
+    ).exclude(role=User.Role.CLIENT).exclude(id__in=exclude_ids)
 
-    # Pagination
-    paginator = Paginator(providers_qs, 3)
+    # Pagination (use providers_list, which includes leader)
+    paginator = Paginator(providers_list, 3)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
+    paginated_providers = page_obj.object_list
 
     current = page_obj.number
     total = paginator.num_pages
@@ -136,6 +281,7 @@ def project_providers(request, pk):
         "SUPERUSER_ROLES": SUPERUSER_ROLES,
         "FACULTY_ROLE": FACULTY_ROLE,
         'providers': page_obj,
+        'paginated_providers': paginated_providers,
         'paginator': paginator,
         'page_number': page_number,
         'page_obj': page_obj,
@@ -144,106 +290,308 @@ def project_providers(request, pk):
     })
 
 
+@project_visibility_required
 def project_events(request, pk):
     ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
 
-    user_role = getattr(request.user, 'role', None)
+    # Determine base template and access control
+    user_role = getattr(request.user, 'role', None) if request.user.is_authenticated else None
+    
     if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
         base_template = "base_internal.html"
+        # Authenticated users with roles can see all projects
+        project = get_object_or_404(Project, pk=pk)
     else:
         base_template = "base_public.html"
+        # Non-authenticated users or users without admin roles can only see completed projects
+        if not request.user.is_authenticated:
+            project = get_object_or_404(Project, pk=pk, status='COMPLETED')
+        else:
+            project = get_object_or_404(Project, pk=pk)
 
-    project = get_object_or_404(Project, pk=pk)
-    events = project.events.all().order_by('datetime')
+    # Order events: those with datetime=None at the bottom
+    from django.db.models import F, Value, BooleanField, ExpressionWrapper
+    from internal.submissions.models import Submission
+    
+    events = project.events.annotate(
+        has_datetime=ExpressionWrapper(Q(datetime__isnull=False), output_field=BooleanField())
+    ).order_by('-has_datetime', 'datetime')
+    
+    # Add submission status information to events
+    for event in events:
+        event.related_submissions = Submission.objects.filter(event=event).first()
+    
     total = project.estimated_events
     completed = project.event_progress
     percent = int((completed / total) * 100) if total else 0
+
+    from shared.event_calendar import services as calendar_services
+
+    def parse_activity_datetime(value):
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            return None
+
+        local_tz = timezone.get_current_timezone()
+        if timezone.is_naive(parsed):
+            return timezone.make_aware(parsed, local_tz)
+        return timezone.localtime(parsed, local_tz)
 
     event_form = None
     event_to_edit = None
     if request.method == 'POST':
         if request.POST.get('add_event'):
-            # Add Event button: create new ProjectEvent and increment estimated_events
+            # Add Activity: create new ProjectEvent with modal data (does NOT change estimated_events)
             from .models import ProjectEvent
+            # timezone is imported at the top
             now = timezone.now()
-            new_event = ProjectEvent.objects.create(
+            
+            # Get data from modal form (note: modal uses 'add_event_' prefix for field names)
+            title = request.POST.get('add_event_title', f"Event {project.events.count() + 1}")
+            description = request.POST.get('add_event_description', '')  # Optional description field
+            datetime_str = request.POST.get('add_event_datetime', None)
+            location = request.POST.get('add_event_location', '')
+            allocated_budget_str = request.POST.get('add_event_allocated_budget', '')
+            
+            # Validate and parse allocated budget (required field)
+            if not allocated_budget_str or allocated_budget_str.strip() == '':
+                messages.error(request, "Allocated budget is required for activities.")
+                return redirect(request.path)
+            
+            try:
+                allocated_budget = Decimal(allocated_budget_str)
+                if allocated_budget <= 0:
+                    messages.error(request, "Allocated budget must be greater than zero.")
+                    return redirect(request.path)
+            except (ValueError, InvalidOperation):
+                messages.error(request, "Invalid budget amount. Please enter a valid number.")
+                return redirect(request.path)
+            
+            # Validate activity budget doesn't exceed project budget
+            # Use helper function to ensure consistency with expenses view
+            total_project_budget, current_used_budget, remaining_project_budget = calculate_project_budget_info(project)
+            
+            if allocated_budget > remaining_project_budget:
+                messages.error(
+                    request,
+                    f"Cannot allocate ₱{allocated_budget:,.2f} to this activity. "
+                    f"Only ₱{remaining_project_budget:,.2f} remaining in project budget."
+                )
+                return redirect(request.path)
+            
+            # Determine if this is a placeholder based on whether datetime and location are provided
+            is_placeholder = not (datetime_str and location)
+            
+            # Validate against calendar conflicts (holidays, meetings, activities)
+            if datetime_str and not is_placeholder:
+                event_datetime = parse_activity_datetime(datetime_str)
+                if not event_datetime:
+                    messages.error(request, "Invalid activity date/time format.")
+                    return redirect(request.path)
+
+                conflict = calendar_services.get_datetime_conflict(request.user, event_datetime)
+                if conflict.get('has_conflict'):
+                    messages.error(request, f"{conflict.get('message')} View calendar to choose another slot.")
+                    return redirect(request.path)
+            
+            ProjectEvent.objects.create(
                 project=project,
-                title=f"Event {project.events.count() + 1}",
-                description="Description Here",
-                datetime=now,
-                location="",
+                title=title,
+                description=description,
+                datetime=datetime_str if datetime_str else None,
+                location=location,
+                allocated_budget=allocated_budget if allocated_budget > 0 else None,
                 created_at=now,
                 created_by=request.user,
                 updated_at=now,
                 updated_by=request.user,
                 image=None,
-                placeholder=True
+                placeholder=is_placeholder
             )
-            project.estimated_events += 1
-            project.save(update_fields=["estimated_events"])
+            # Do NOT increment estimated_events - it's set separately and represents planned activities
             return redirect(request.path)
         elif request.POST.get('delete_event_id'):
-            # Delete event: remove ProjectEvent and decrement estimated_events
+            # Delete event: remove ProjectEvent (does NOT change estimated_events)
             event_id = request.POST.get('delete_event_id')
             from .models import ProjectEvent
+            from internal.submissions.models import Submission
             try:
                 event_to_delete = ProjectEvent.objects.get(pk=event_id, project=project)
+                
+                # Check for ALL submissions related to this event (not just approved ones)
+                related_submissions = Submission.objects.filter(event=event_to_delete)
+                
+                # Check if this event has approved submissions and adjust counters
+                approved_submission = related_submissions.filter(status='APPROVED').first()
+                
+                if approved_submission:
+                    # Decrement event progress if this was a completed event
+                    if project.event_progress > 0:
+                        project.event_progress -= 1
+                    
+                    # Subtract trained individuals if this event contributed to the total
+                    if approved_submission.num_trained_individuals:
+                        trained_count = approved_submission.num_trained_individuals
+                        if project.total_trained_individuals >= trained_count:
+                            project.total_trained_individuals -= trained_count
+                
+                # Delete all related submissions for this event
+                related_submissions.delete()
+                
+                # Delete the event itself
                 event_to_delete.delete()
-                if project.estimated_events > 0:
-                    project.estimated_events -= 1
-                    project.save(update_fields=["estimated_events"])
+                
+                # Do NOT decrement estimated_events - it represents planned activities, not actual count
+                project.save(update_fields=["event_progress", "total_trained_individuals"])
+                    
             except ProjectEvent.DoesNotExist:
                 pass
             return redirect(request.path)
         else:
             event_id = request.POST.get('event_id')
             if event_id:
-                event_to_edit = get_object_or_404(project.events, pk=event_id)
-                # Remove required validation for datetime and image
-                post_data = request.POST.copy()
-                files_data = request.FILES.copy()
-                if not post_data.get('datetime'):
-                    post_data['datetime'] = event_to_edit.datetime
-                if not files_data.get('image'):
-                    # If no new image uploaded, keep old image
-                    files_data['image'] = event_to_edit.image
-                event_form = ProjectEventForm(post_data, files_data, instance=event_to_edit)
-                if event_form.is_valid():
-                    event = event_form.save(commit=False)
-                    event.project = project
-                    event.created_by = request.user
-                    event.status = 'SCHEDULED'
-                    event.save()
+                # Edit existing event
+                event_to_edit = get_object_or_404(project.events, pk=event_id, project=project)
+                event_to_edit.title = request.POST.get('title', event_to_edit.title)
+                event_to_edit.description = request.POST.get('description', event_to_edit.description)
+                new_datetime = request.POST.get('datetime', event_to_edit.datetime)
+                event_to_edit.location = request.POST.get('location', event_to_edit.location)
+                
+                # Handle allocated budget update (required field)
+                allocated_budget_str = request.POST.get('allocated_budget', '')
+                
+                if not allocated_budget_str or allocated_budget_str.strip() == '':
+                    messages.error(request, "Allocated budget is required for activities.")
                     return redirect(request.path)
+                
+                try:
+                    new_allocated_budget = Decimal(allocated_budget_str)
+                    if new_allocated_budget <= 0:
+                        messages.error(request, "Allocated budget must be greater than zero.")
+                        return redirect(request.path)
+                except (ValueError, InvalidOperation):
+                    messages.error(request, "Invalid budget amount. Please enter a valid number.")
+                    return redirect(request.path)
+                
+                # Validate activity budget doesn't exceed project budget
+                if new_allocated_budget is not None:
+                    # Use helper function to ensure consistency with expenses view
+                    total_project_budget, current_used_budget, _ = calculate_project_budget_info(project)
+                    # When editing, we need to account for the old allocation expense that will be updated
+                    old_budget = event_to_edit.allocated_budget or Decimal('0')
+                    # Subtract the old allocation expense amount to get the base used budget
+                    remaining_project_budget = total_project_budget - (current_used_budget - old_budget)
+                    
+                    if new_allocated_budget > remaining_project_budget:
+                        messages.error(
+                            request,
+                            f"Cannot allocate ₱{new_allocated_budget:,.2f} to this activity. "
+                            f"Only ₱{remaining_project_budget:,.2f} remaining in project budget."
+                        )
+                        return redirect(request.path)
+                    
+                    event_to_edit.allocated_budget = new_allocated_budget if new_allocated_budget > 0 else None
+                
+                # Validate against calendar conflicts (holidays, meetings, activities)
+                if new_datetime:
+                    event_datetime = parse_activity_datetime(new_datetime)
+                    if not event_datetime:
+                        messages.error(request, "Invalid activity date/time format.")
+                        return redirect(request.path)
 
+                    conflict = calendar_services.get_datetime_conflict(
+                        request.user,
+                        event_datetime,
+                        exclude_project_event_id=event_to_edit.id,
+                    )
+                    if conflict.get('has_conflict'):
+                        messages.error(request, f"{conflict.get('message')} View calendar to choose another slot.")
+                        return redirect(request.path)
+                
+                event_to_edit.datetime = new_datetime
+                
+                if event_to_edit.datetime and event_to_edit.location:
+                    event_to_edit.placeholder = False
+                event_to_edit.updated_by = request.user
+                event_to_edit.updated_at = timezone.now()
+
+                event_to_edit.save()
+                return redirect(request.path)  # Add redirect to refresh page
     if not event_form:
         event_form = ProjectEventForm()
-
+    
+    # Ensure we have a fresh project instance from database to avoid caching issues
+    project = Project.objects.get(pk=project.pk)
+    
+    # Calculate remaining budget for activity allocation
+    # Use the same helper as the expenses view so the numbers match exactly
+    total_project_budget, current_used_budget, remaining_budget_for_activities = calculate_project_budget_info(project)
+    # Alias for clarity: this is the same “cash available” shown in Expenses
+    cash_available_for_expenses = remaining_budget_for_activities
+    
+    # Calculate remaining budget for each event (for edit modals - includes the event's own budget)
+    events_with_remaining = []
+    # Convert queryset to list to avoid multiple evaluations
+    events_list = list(events)
+    for event in events_list:
+        event_old_budget = event.allocated_budget or Decimal('0')
+        # For edit mode, remaining = remaining_budget_for_activities + this event's old budget
+        # This works because remaining_budget_for_activities = total_budget - used_budget,
+        # and used_budget includes the old allocation expense, so adding it back gives us
+        # the available budget if we were to remove this event's allocation
+        event_remaining = remaining_budget_for_activities + event_old_budget
+        events_with_remaining.append({
+            'event': event,
+            'remaining_budget': event_remaining
+        })
+        # Add evaluation URL to each event for template
+        try:
+            event.evaluation_full_url = event.get_full_evaluation_url(request)
+        except Exception as e:
+            # Fallback if there's an error generating URL
+            event.evaluation_full_url = f"http://localhost:8000/evaluate/{event.evaluation_token}/"
+    
     return render(request, 'projects/project_events.html', {
         'project': project,
         'base_template': base_template,
-        'events': events,
+        'events': events_list,
+        'events_with_remaining': events_with_remaining,
         'total': total,
         'completed': completed,
         'percent': percent,
         'event_form': event_form,
         'event_to_edit': event_to_edit,
+        'total_project_budget': total_project_budget,
+        'remaining_budget_for_activities': remaining_budget_for_activities,
+        'cash_available_for_expenses': cash_available_for_expenses,
         "ADMIN_ROLES": ADMIN_ROLES,
         "SUPERUSER_ROLES": SUPERUSER_ROLES,
         "FACULTY_ROLE": FACULTY_ROLE
     })
 
 
+@project_visibility_required
 def project_files(request, pk):
     ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
 
-    user_role = getattr(request.user, 'role', None)
+    # Determine base template and access control
+    user_role = getattr(request.user, 'role', None) if request.user.is_authenticated else None
+    
     if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
         base_template = "base_internal.html"
+        # Authenticated users with roles can see all projects
+        project = get_object_or_404(Project, pk=pk)
     else:
         base_template = "base_public.html"
-
-    project = get_object_or_404(Project, pk=pk)
+        # Non-authenticated users or users without admin roles can only see completed projects
+        if not request.user.is_authenticated:
+            project = get_object_or_404(Project, pk=pk, status='COMPLETED')
+        else:
+            project = get_object_or_404(Project, pk=pk)
+    
     documents = project.documents.all()
     
 
@@ -251,15 +599,12 @@ def project_files(request, pk):
     sort_by = request.GET.get('sort_by', 'name')
     order = request.GET.get('order', 'asc')
     file_type = request.GET.get('file_type', '')
-    date = request.GET.get('date', '')
 
     extensions = set(documents.values_list('file', flat=True))
     extensions = set([os.path.splitext(f)[1][1:].lower() for f in extensions if f])
 
     if file_type:
         documents = [doc for doc in documents if doc.extension == file_type]
-    if date:
-        documents = [doc for doc in documents if str(doc.uploaded_at.date()) == date]
     if search:
         documents = [doc for doc in documents if search.lower() in doc.name.lower()]
  
@@ -312,10 +657,11 @@ def project_files(request, pk):
     })
 
 
+@project_visibility_required
 def project_submissions(request, pk):
     ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
     from internal.submissions.models import Submission
-    from django.utils import timezone
+    # timezone is imported at the top
     # Get all submissions for this project
     all_submissions = Submission.objects.filter(project__pk=pk)
     events = ProjectEvent.objects.filter(project__pk=pk).order_by('datetime')
@@ -388,7 +734,7 @@ def project_submissions(request, pk):
     # Submission Logic
     from django.http import HttpResponseBadRequest
     from django.shortcuts import redirect
-    from django.contrib import messages
+    # messages is imported at the top
 
     if request.method == "POST":
         submission = get_object_or_404(Submission, pk=request.POST.get('submission_id'))
@@ -444,7 +790,9 @@ def project_submissions(request, pk):
         "submissions": page_obj,
         "events": events,
         "ADMIN_ROLES": ADMIN_ROLES,
+        "SUPERUSER_ROLES": SUPERUSER_ROLES,
         "COORDINATOR_ROLE": COORDINATOR_ROLE,
+        "FACULTY_ROLE": FACULTY_ROLE,
         "provider_ids": provider_ids,
         "status_choices": status_choices,
         "status_filter": status_filter,
@@ -453,14 +801,32 @@ def project_submissions(request, pk):
         'page_number': page_number,
         'page_obj': page_obj,
         'page_range': page_range,
+        'now': now,
     }
     return render(request, "projects/project_submissions.html", context)
 
 
+@project_visibility_required
 def project_submissions_details(request, pk, submission_id):
     ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
     
     submission = get_object_or_404(Submission, pk=submission_id, project__pk=pk)
+
+    # Mark submission alerts as viewed for faculty users
+    if request.user.role in ["FACULTY", "IMPLEMENTER"]:
+        # imports are at the top
+        updated = ProjectUpdate.objects.filter(
+            user=request.user, 
+            project__pk=pk, 
+            submission=submission, 
+            viewed=False
+        ).update(viewed=True)
+        if updated and request.method == 'GET' and not request.GET.get('new'):
+            url = reverse('project_submissions_details', args=[pk, submission_id])
+            params = request.GET.copy()
+            params['new'] = '1'
+            url += '?' + params.urlencode()
+            return HttpResponseRedirect(url)
 
     user_role = getattr(request.user, 'role', None)
     if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
@@ -469,31 +835,199 @@ def project_submissions_details(request, pk, submission_id):
         base_template = "base_public.html"
 
     project = get_object_or_404(Project, pk=pk)
+    events = ProjectEvent.objects.filter(project__pk=pk).order_by('datetime')
 
+    # Handle submission POST requests
+    if request.method == "POST":
+        # timezone is imported at the top
+        action = request.POST.get('action')
+        
+        # Handle Submission Upload (allow PENDING, REVISION_REQUESTED, REJECTED, and OVERDUE)
+        if action == "submit" and submission.status in ["PENDING", "REVISION_REQUESTED", "REJECTED", "OVERDUE"]:
+            sub_type = submission.downloadable.submission_type
+
+            if sub_type == "final":
+                submission.file = request.FILES.get("final_file")
+                submission.for_product_production = bool(request.POST.get("for_product_production"))
+                submission.for_research = bool(request.POST.get("for_research"))
+                submission.for_extension = bool(request.POST.get("for_extension"))
+            
+            elif sub_type == "event":
+                # For event submissions, the event is already linked via submission.event
+                if submission.event:
+                    # Update the ProjectEvent with image and description
+                    submission.event.image = request.FILES.get("image_event")
+                    submission.event.description = request.POST.get("image_description", "")
+                    submission.event.save()
+                    
+                    # Update the project's total trained individuals
+                    num_trained = int(request.POST.get("num_trained_individuals", 0))
+                    project.total_trained_individuals += num_trained
+                    project.save()
+                
+                # Keep the submission fields for backward compatibility 
+                submission.image_event = request.FILES.get("image_event")
+                submission.image_description = request.POST.get("image_description", "")
+                submission.num_trained_individuals = request.POST.get("num_trained_individuals", 0)
+
+            else:  # "file"
+                submission.file = request.FILES.get("file_file")
+
+            # Check if submission is late
+            now = timezone.now()
+            if submission.deadline and now > submission.deadline:
+                submission.is_late_submission = True
+            
+            submission.status = "SUBMITTED"
+            submission.submitted_at = now
+            submission.submitted_by = request.user
+            submission.updated_by = request.user
+            submission.updated_at = now
+            submission.save()
+
+            from urllib.parse import quote
+            submission_title = submission.downloadable.name if submission.downloadable else "Submission"
+            return redirect(f'/projects/{pk}/submission/?success=true&action=submit&title={quote(submission_title)}')
+
+    provider_ids = list(project.providers.values_list('id', flat=True))
+    
+    # Check if project leader has no college (determines if COORDINATOR review is needed)
+    project_leader_has_no_college = project.project_leader and not project.project_leader.college
+    
+    # Check if current user is NOT involved in the project (for admin review buttons)
+    user_not_in_project = (
+        request.user.id != project.project_leader.id and 
+        request.user.id not in provider_ids
+    )
+    
     context = {
         "project": project,
         "base_template": base_template,
         "submission": submission,
+        "events": events,
+        "provider_ids": provider_ids,
+        "project_leader_has_no_college": project_leader_has_no_college,
+        "user_not_in_project": user_not_in_project,
         "ADMIN_ROLES": ADMIN_ROLES,
         "COORDINATOR_ROLE": COORDINATOR_ROLE,
         "FACULTY_ROLE": FACULTY_ROLE,
     }
-    return render(request, "projects/project_submissions_details.html", context)
+    from django.utils.cache import add_never_cache_headers
+    response = render(request, "projects/project_submissions_details.html", context)
+    add_never_cache_headers(response)
+    return response
 
-@role_required(allowed_roles=["UESO", "VP", "DIRECTOR", "COORDINATOR", "FACULTY", "IMPLEMENTER"])
+# ACTIONS
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR", "COORDINATOR", "FACULTY", "IMPLEMENTER", "DEAN", "PROGRAM_HEAD"], require_confirmed=True)
 def admin_submission_action(request, pk, submission_id):
     submission = get_object_or_404(Submission, pk=submission_id, project__pk=pk)
-    from django.utils import timezone
+    # timezone is imported at the top
     if request.method == 'POST':
         action = request.POST.get('action')
-        if submission.status == 'SUBMITTED' and request.user.role in ["FACULTY", "IMPLEMENTER"]:
+        
+        # Check if user is project leader or provider
+        is_project_member = (
+            request.user.id == submission.project.project_leader.id or 
+            submission.project.providers.filter(id=request.user.id).exists()
+        )
+        
+        if submission.status == 'SUBMITTED' and is_project_member:
             if action == 'unsubmit':
                 submission.status = 'PENDING'
                 submission.submitted_by = None
                 submission.submitted_at = None
+                submission.file = None
                 submission.updated_by = request.user
                 submission.updated_at = timezone.now()
                 submission.save()
+        elif submission.status == 'PENDING' and request.user.role in ["UESO", "VP", "DIRECTOR"]:
+            if action == 'delete':
+                from system.logs.models import LogEntry
+                from system.notifications.models import Notification
+                from system.users.models import User
+                
+                # Store submission data before deletion
+                project = submission.project
+                project_title = project.title
+                form_name = str(submission.downloadable.name_with_ext)
+                project_leader = project.project_leader
+                project_college = project_leader.college if project_leader else None
+                submission_id = submission.id
+                
+                # Get all people involved for notifications
+                notification_recipients = []
+                if project_leader:
+                    notification_recipients.append(project_leader)
+                notification_recipients.extend(list(project.providers.all()))
+                
+                # Also notify coordinator of the same college
+                if project_college:
+                    coordinators = User.objects.filter(
+                        role='COORDINATOR',
+                        college=project_college,
+                        is_confirmed=True,
+                        is_active=True
+                    )
+                    notification_recipients.extend(coordinators)
+                
+                # Notify UESO, Director, VP
+                supervisors = User.objects.filter(
+                    role__in=['UESO', 'DIRECTOR', 'VP'],
+                    is_confirmed=True,
+                    is_active=True
+                )
+                notification_recipients.extend(supervisors)
+                
+                # Remove duplicates
+                notification_recipients = list(set(notification_recipients))
+                
+                # Create log entry BEFORE deletion
+                log_entry = LogEntry.objects.create(
+                    user=request.user,
+                    action='DELETE',
+                    model='Submission',
+                    object_id=submission_id,
+                    object_repr=f"{form_name} - {project_title}",
+                    details=f"Submission requirement '{form_name}' for project '{project_title}' has been deleted by {request.user.get_full_name()}",
+                    url='',  # No URL since the submission no longer exists
+                    is_notification=False  # We'll create notifications manually
+                )
+                
+                # Create notifications manually for all involved users (except the actor)
+                notifications_to_create = [
+                    Notification(
+                        recipient=recipient,
+                        actor=request.user,
+                        action='DELETE',
+                        model='Submission',
+                        object_id=submission_id,
+                        object_repr=f"{form_name} - {project_title}",
+                        details=f"Submission requirement '{form_name}' for project '{project_title}' has been deleted",
+                        url='',
+                    )
+                    for recipient in notification_recipients
+                    if recipient != request.user  # Don't notify the person who deleted it
+                ]
+                
+                if notifications_to_create:
+                    Notification.objects.bulk_create(notifications_to_create, batch_size=100)
+                
+                # Delete project updates related to this submission
+                ProjectUpdate.objects.filter(submission=submission).delete()
+                
+                # If this submission is linked to an event, mark event as not having submission
+                if submission.event:
+                    submission.event.has_submission = False
+                    submission.event.save()
+                
+                # Delete the submission
+                project_id = project.id
+                submission.delete()
+                
+                # Redirect with toast parameters
+                from urllib.parse import quote
+                return redirect(f'/projects/{project_id}/submission/?success=true&action=deleted&title={quote(form_name)}')
+
         elif submission.status == 'SUBMITTED' and request.user.role == "COORDINATOR": 
             if action == 'forward':
                 submission.status = 'FORWARDED'
@@ -509,28 +1043,218 @@ def admin_submission_action(request, pk, submission_id):
                 submission.reason_for_revision = request.POST.get('reason', '')
                 submission.updated_by = request.user
                 submission.updated_at = timezone.now()
+                submission.revision_count += 1
                 submission.save()
+        # New: Allow UESO/DIRECTOR/VP to approve directly from SUBMITTED if project leader has no college
+        # BUT only if they are NOT involved in the project (not leader or provider)
+        elif submission.status == 'SUBMITTED' and request.user.role in ["VP", "DIRECTOR", "UESO"]:
+            # Check if project leader has no college
+            project_leader_has_no_college = submission.project.project_leader and not submission.project.project_leader.college
+            # Check if admin is NOT involved in the project
+            is_not_project_member = (
+                request.user.id != submission.project.project_leader.id and 
+                not submission.project.providers.filter(id=request.user.id).exists()
+            )
+            if project_leader_has_no_college and is_not_project_member:
+                if action == 'accept':
+                    submission.status = 'APPROVED'
+                    submission.authorized_by = request.user
+                    submission.authorized_at = timezone.now()
+                    submission.updated_by = request.user
+                    submission.updated_at = timezone.now()
+                    submission.save()
+                elif action == 'request_revision':
+                    submission.status = 'REVISION_REQUESTED'
+                    submission.reviewed_by = request.user
+                    submission.reviewed_at = timezone.now()
+                    submission.reason_for_revision = request.POST.get('reason', '')
+                    submission.updated_by = request.user
+                    submission.updated_at = timezone.now()
+                    submission.revision_count += 1
+                    submission.save()
         elif submission.status == 'FORWARDED' and request.user.role in ["VP", "DIRECTOR", "UESO"]:
-            if action == 'accept':
-                submission.status = 'APPROVED'
-                submission.authorized_by = request.user
-                submission.authorized_at = timezone.now()
-                submission.updated_by = request.user
-                submission.updated_at = timezone.now()
-                submission.save()
-            elif action == 'reject':
-                submission.status = 'REJECTED'
-                submission.authorized_by = request.user
-                submission.authorized_at = timezone.now()
-                submission.reason_for_rejection = request.POST.get('reason', '')
-                submission.updated_by = request.user
-                submission.updated_at = timezone.now()
-                submission.save()
+            # Check if admin is NOT involved in the project
+            is_not_project_member = (
+                request.user.id != submission.project.project_leader.id and 
+                not submission.project.providers.filter(id=request.user.id).exists()
+            )
+            if is_not_project_member:
+                if action == 'accept':
+                    submission.status = 'APPROVED'
+                    submission.authorized_by = request.user
+                    submission.authorized_at = timezone.now()
+                    submission.updated_by = request.user
+                    submission.updated_at = timezone.now()
+                    submission.save()
+                elif action == 'reject':
+                    submission.status = 'REJECTED'
+                    submission.authorized_by = request.user
+                    submission.authorized_at = timezone.now()
+                    submission.reason_for_rejection = request.POST.get('reason', '')
+                    submission.updated_by = request.user
+                    submission.updated_at = timezone.now()
+                    submission.rejection_count += 1
+                    submission.save()
+                
+        # Create or update ProjectUpdate for key status changes that affect the project team
+        if action in ['forward', 'accept', 'reject', 'request_revision'] and submission.project:
+            # Notify project leader and providers about submission status changes
+            users_to_notify = [submission.project.project_leader]
+            if submission.project.providers.exists():
+                users_to_notify.extend(submission.project.providers.all())
             
-    return redirect('project_submissions_details', pk=pk, submission_id=submission_id)
+            for user in users_to_notify:
+                if user:  # Ensure user exists
+                    ProjectUpdate.objects.update_or_create(
+                        user=user,
+                        project=submission.project,
+                        submission=submission,
+                        status=f'{submission.status}',
+                        defaults={
+                            'viewed': False,
+                            'updated_at': timezone.now(),
+                        }
+                    )
+    from urllib.parse import quote
+    submission_title = submission.downloadable.name if submission.downloadable else "Submission"
+    return redirect(f'/projects/{pk}/submission/?success=true&action={action}&title={quote(submission_title)}')
 
 
+@csrf_protect
+@project_visibility_required
 def project_expenses(request, pk):
+    # messages is imported at the top
+    # Sum and Decimal are imported at the top
+    
+    ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
+
+    user_role = getattr(request.user, 'role', None)
+    if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
+        base_template = "base_internal.html"
+    else:
+        base_template = "base_public.html"
+
+    project = get_object_or_404(Project, pk=pk)
+    
+    # Ensure we have a fresh project instance from database to avoid caching issues
+    project = Project.objects.get(pk=project.pk)
+
+    # Handle expense creation
+    if request.method == 'POST' and request.user.is_authenticated:
+        title = request.POST.get('reason') or request.POST.get('title')
+        notes = request.POST.get('notes')
+        amount_raw = request.POST.get('amount')
+        receipt = request.FILES.get('receipt')
+        event_id = request.POST.get('event_id', '').strip()
+        
+        try:
+            # Accept decimals
+            amount_val = Decimal(amount_raw) if amount_raw else Decimal('0')
+        except Exception:
+            messages.error(request, "Invalid amount entered. Please use a valid number.")
+            return redirect(request.path)
+
+        # Get event if provided
+        event = None
+        if event_id:
+            try:
+                event = project.events.get(pk=event_id)
+            except ProjectEvent.DoesNotExist:
+                messages.error(request, "Selected activity does not exist.")
+                return redirect(request.path)
+
+        # Validate activity budget if event is linked
+        if event and event.allocated_budget:
+            current_event_expenses = event.expenses.aggregate(s=Sum('amount'))['s'] or Decimal('0')
+            remaining_event_budget = (event.allocated_budget or Decimal('0')) - current_event_expenses
+            
+            if amount_val > remaining_event_budget:
+                messages.error(
+                    request,
+                    f"Expense exceeds activity budget. "
+                    f"Activity '{event.title}' has ₱{remaining_event_budget:,.2f} remaining "
+                    f"(₱{event.allocated_budget:,.2f} allocated, ₱{current_event_expenses:,.2f} spent)."
+                )
+                return redirect(request.path)
+
+        # Calculate budget info for validation (use helper function for consistency)
+        total_budget, current_spent_total, _ = calculate_project_budget_info(project)
+        
+        # Budget Validation: Check if new expense exceeds total budget
+        new_spent_total = current_spent_total + amount_val
+        
+        if total_budget <= Decimal('0'):
+            # If total budget is zero or negative, no expenses are allowed
+            messages.error(request, "Project budget is zero or negative. Cannot add expense.")
+            return redirect(request.path)
+            
+        if new_spent_total > total_budget:
+            # Block the expense if it exceeds the total budget
+            messages.error(request, 
+                           f"Expense exceeds total project budget of ₱{total_budget:,.2f}. "
+                           f"Current spent: ₱{current_spent_total:,.2f}. "
+                           f"Requested: ₱{amount_val:,.2f}.")
+            return redirect(request.path)
+
+        if title and amount_val > Decimal('0'):
+            # If validation passes, create the expense
+            ProjectExpense.objects.create(
+                project=project,
+                event=event,
+                title=title,
+                reason=notes,
+                amount=amount_val,
+                receipt=receipt,
+                created_by=request.user,
+            )
+            
+            # Update used_budget on the Project model
+            project.used_budget = new_spent_total
+            project.save(update_fields=['used_budget'])
+            
+            messages.success(request, f"Expense of ₱{amount_val:,.2f} successfully added.")
+            return redirect(request.path)
+        elif amount_val <= Decimal('0'):
+             messages.error(request, "Amount must be greater than zero.")
+             return redirect(request.path)
+
+
+    # Dynamic budget figures based on Project fields
+    # Use helper function to ensure consistency with activities view
+    total_budget, spent_total, remaining_total = calculate_project_budget_info(project)
+    percent_remaining = 0
+    if total_budget > Decimal('0'):
+        try:
+            # Cast to float for division, then back to int for percentage
+            percent_remaining = int(round((float(remaining_total) / float(total_budget)) * 100))
+        except Exception:
+            percent_remaining = 0
+
+    # Expenses data
+    expenses = ProjectExpense.objects.filter(project=project).order_by('-date_incurred', '-created_at')
+    
+    # Get all activities for the expense form dropdown
+    from .models import ProjectEvent
+    activities = project.events.all().order_by('-datetime', 'title')
+    
+    return render(request, 'projects/project_expenses.html', {
+        'project': project, 
+        'base_template': base_template,
+        'expenses': expenses,
+        'activities': activities,
+        'remaining_total': remaining_total,
+        'percent_remaining': percent_remaining,
+        "ADMIN_ROLES": ADMIN_ROLES,
+        "SUPERUSER_ROLES": SUPERUSER_ROLES,
+        "FACULTY_ROLE": FACULTY_ROLE
+    })
+
+
+@project_visibility_required
+def project_invoices(request, pk):
+    """View for displaying receipt files (invoices)"""
+    from django.contrib import messages
+    
     ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
 
     user_role = getattr(request.user, 'role', None)
@@ -541,30 +1265,80 @@ def project_expenses(request, pk):
 
     project = get_object_or_404(Project, pk=pk)
 
-    expenses = [
-        {
-            'title': 'Venue Rental',
-            'reason': 'Rented hall for event',
-            'amount': 5000.00,
-            'date': '2025-09-20',
-            'receipt': 'https://via.placeholder.com/120x120.png?text=Receipt',
-        },
-        {
-            'title': 'Food & Catering',
-            'reason': 'Lunch for participants',
-            'amount': 3200.50,
-            'date': '2025-09-21',
-            'receipt': '',
-        },
-        {
-            'title': 'Materials',
-            'reason': 'Printed handouts and supplies',
-            'amount': 1500.75,
-            'date': '2025-09-22',
-            'receipt': 'https://via.placeholder.com/120x120.png?text=Receipt',
-        },
-    ]
-    return render(request, 'projects/project_expenses.html', {
+    # Handle expense creation (same logic as project_expenses)
+    if request.method == 'POST' and request.user.is_authenticated:
+        title = request.POST.get('reason') or request.POST.get('title')
+        notes = request.POST.get('notes')
+        amount_raw = request.POST.get('amount')
+        receipt = request.FILES.get('receipt')
+        event_id = request.POST.get('event_id', '').strip()
+        
+        try:
+            amount_val = Decimal(amount_raw) if amount_raw else Decimal('0')
+        except Exception:
+            amount_val = Decimal('0')
+        
+        # Get event if provided
+        event = None
+        if event_id:
+            try:
+                from .models import ProjectEvent
+                event = project.events.get(pk=event_id)
+            except ProjectEvent.DoesNotExist:
+                pass
+        
+        if title and amount_val > Decimal('0'):
+            ProjectExpense.objects.create(
+                project=project,
+                event=event,
+                title=title,
+                reason=notes,
+                amount=amount_val,
+                receipt=receipt,
+                created_by=request.user,
+            )
+            # Recompute used_budget as sum of expenses
+            try:
+                from django.db.models import Sum
+                agg = ProjectExpense.objects.filter(project=project).aggregate(s=Sum('amount'))
+                project.used_budget = agg.get('s') or 0
+                project.save(update_fields=['used_budget'])
+            except Exception:
+                pass
+            return redirect(request.path)
+
+    # Expenses data with search and filter
+    expenses = ProjectExpense.objects.filter(project=project)
+    
+    # Search functionality
+    search_query = request.GET.get('search', '').strip()
+    if search_query:
+        from django.db.models import Q
+        expenses = expenses.filter(
+            Q(title__icontains=search_query) |
+            Q(reason__icontains=search_query)
+        )
+    
+    # Sorting functionality
+    sort_by = request.GET.get('sort_by', 'date')
+    order = request.GET.get('order', 'desc')
+    
+    # Map sort_by to actual field names
+    sort_field_map = {
+        'date': 'date_incurred',
+        'title': 'title',
+        'amount': 'amount',
+    }
+    
+    sort_field = sort_field_map.get(sort_by, 'date_incurred')
+    
+    # Apply ordering
+    if order == 'asc':
+        expenses = expenses.order_by(sort_field, 'created_at')
+    else:
+        expenses = expenses.order_by(f'-{sort_field}', '-created_at')
+    
+    return render(request, 'projects/project_invoices.html', {
         'project': project, 
         'base_template': base_template,
         'expenses': expenses,
@@ -573,18 +1347,28 @@ def project_expenses(request, pk):
         "FACULTY_ROLE": FACULTY_ROLE
     })
 
+
+@project_visibility_required
 def project_evaluations(request, pk):
     ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
 
-    user_role = getattr(request.user, 'role', None)
+    # Determine base template and access control
+    user_role = getattr(request.user, 'role', None) if request.user.is_authenticated else None
+    
     if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
         base_template = "base_internal.html"
+        # Authenticated users with roles can see all projects
+        project = get_object_or_404(Project, pk=pk)
     else:
         base_template = "base_public.html"
+        # Non-authenticated users or users without admin roles can only see completed projects
+        if not request.user.is_authenticated:
+            project = get_object_or_404(Project, pk=pk, status='COMPLETED')
+        else:
+            project = get_object_or_404(Project, pk=pk)
 
-    project = get_object_or_404(Project, pk=pk)
-
-    if request.method == 'POST':
+    # Only authenticated users with required roles can submit evaluations
+    if request.method == 'POST' and request.user.is_authenticated and user_role in ["UESO", "VP", "DIRECTOR", "PROGRAM_HEAD", "DEAN", "COORDINATOR", "FACULTY", "IMPLEMENTER"]:
         rating = request.POST.get('rating')
         comment = request.POST.get('comment', '')
         evaluated_by = request.user
@@ -607,26 +1391,305 @@ def project_evaluations(request, pk):
     })
 
 
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR", "PROGRAM_HEAD", "DEAN", "COORDINATOR", "FACULTY", "IMPLEMENTER"], require_confirmed=True)
+def edit_project_evaluation(request, pk, eval_id):
+    project = get_object_or_404(Project, pk=pk)
+    evaluation = get_object_or_404(ProjectEvaluation, pk=eval_id, project=project)
+    if request.method != 'POST':
+        return redirect(f'/projects/{pk}/evaluations/')
+
+    user_role = getattr(request.user, 'role', None)
+    admin_roles = {"VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"}
+    if evaluation.evaluated_by_id != request.user.id and user_role not in admin_roles:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden("You can only edit your own evaluation.")
+
+    rating = request.POST.get('rating')
+    comment = request.POST.get('comment', '')
+    if rating is not None and rating != "":
+        try:
+            evaluation.rating = int(rating)
+        except Exception:
+            pass
+    evaluation.comment = comment
+    evaluation.save()
+    return redirect(f'/projects/{pk}/evaluations/')
+
+
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR", "PROGRAM_HEAD", "DEAN", "COORDINATOR", "FACULTY", "IMPLEMENTER"], require_confirmed=True)
+def delete_project_evaluation(request, pk, eval_id):
+    project = get_object_or_404(Project, pk=pk)
+    evaluation = get_object_or_404(ProjectEvaluation, pk=eval_id, project=project)
+    if request.method != 'POST':
+        return redirect(f'/projects/{pk}/evaluations/')
+
+    user_role = getattr(request.user, 'role', None)
+    admin_roles = {"VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"}
+    if evaluation.evaluated_by_id != request.user.id and user_role not in admin_roles:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden("You can only delete your own evaluation.")
+
+    try:
+        evaluation.delete()
+    except Exception:
+        pass
+    return redirect(f'/projects/{pk}/evaluations/')
+
+
+########################################################################################################################
+# Activity Evaluation Views (PSU-ESO 004)
+
+def public_activity_evaluation(request, token):
+    """
+    Public-facing evaluation form accessible via unique token
+    No authentication required
+    """
+    try:
+        activity = ProjectEvent.objects.select_related('project').get(
+            evaluation_token=token, 
+            evaluation_enabled=True
+        )
+    except ProjectEvent.DoesNotExist:
+        return render(request, 'projects/evaluation_not_found.html', status=404)
+    
+    # Allow evaluation for completed, ongoing, or scheduled activities
+    # (Scheduled is allowed for testing purposes - can be restricted later if needed)
+    if activity.status not in ['COMPLETED', 'ONGOING', 'SCHEDULED']:
+        return render(request, 'projects/evaluation_not_available.html', {
+            'message': 'Evaluation is not yet available for this activity.',
+            'activity': activity,
+            'project': activity.project
+        })
+    
+    if request.method == 'POST':
+        # Handle form submission
+        evaluator_name = request.POST.get('evaluator_name', '').strip()
+        if not evaluator_name:
+            evaluator_name = 'Anonymous'
+        
+        # Helper function to safely convert to int
+        def safe_int(value, default=None):
+            try:
+                val = int(value)
+                return val if 1 <= val <= 5 else default
+            except (ValueError, TypeError):
+                return default
+        
+        # Create evaluation
+        evaluation = ActivityEvaluation.objects.create(
+            activity=activity,
+            evaluated_by=request.user if request.user.is_authenticated else None,
+            evaluator_name=evaluator_name,
+            venue=activity.location or request.POST.get('venue', ''),
+            
+            # Trainings/Seminars Section
+            attainment_of_objectives=safe_int(request.POST.get('attainment_of_objectives')),
+            time_management=safe_int(request.POST.get('time_management')),
+            resource_persons_facilitators=safe_int(request.POST.get('resource_persons_facilitators')),
+            topics=safe_int(request.POST.get('topics')),
+            training_venue=safe_int(request.POST.get('training_venue')),
+            food=safe_int(request.POST.get('food')),
+            materials_handouts=safe_int(request.POST.get('materials_handouts')),
+            trainings_seminars_overall=safe_int(request.POST.get('trainings_seminars_overall')),
+            
+            # Timeliness Section
+            held_as_scheduled=safe_int(request.POST.get('held_as_scheduled')),
+            answers_present_need=safe_int(request.POST.get('answers_present_need')),
+            timeliness_overall=safe_int(request.POST.get('timeliness_overall')),
+            
+            # Comments
+            comments=request.POST.get('comments', '')
+        )
+        
+        # Force anonymous user for public template (no navbar needed)
+        from django.contrib.auth.models import AnonymousUser
+        request.user = AnonymousUser()
+        
+        return render(request, 'projects/evaluation_thank_you.html', {
+            'activity': activity,
+            'project': activity.project,
+            'evaluation_token': str(activity.evaluation_token)
+        })
+    
+    # Show evaluation form
+    # Force anonymous user to use public navbar (no role-based navbar needed)
+    from django.contrib.auth.models import AnonymousUser
+    request.user = AnonymousUser()
+    
+    return render(request, 'projects/public_activity_evaluation.html', {
+        'activity': activity,
+        'project': activity.project
+    })
+
+
+def activity_evaluation_qr(request, pk, activity_id):
+    """Generate and return QR code image"""
+    try:
+        import qrcode
+        from io import BytesIO
+        from django.http import HttpResponse
+        import uuid
+        
+        activity = get_object_or_404(ProjectEvent, pk=activity_id, project_id=pk)
+        
+        # Ensure evaluation_token exists before generating QR code
+        if not activity.evaluation_token:
+            activity.evaluation_token = uuid.uuid4()
+            activity.save(update_fields=['evaluation_token'])
+        
+        # Get the full URL for QR code (pass request to get proper host)
+        evaluation_url = activity.get_full_evaluation_url(request)
+        
+        # Generate QR code with larger size for better visibility
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=12,
+            border=4,
+        )
+        qr.add_data(evaluation_url)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = BytesIO()
+        img.save(buffer, format='PNG')
+        buffer.seek(0)
+        
+        return HttpResponse(buffer.getvalue(), content_type='image/png')
+    except ImportError:
+        # QR code library not installed - return a simple error image or message
+        from django.http import HttpResponse
+        return HttpResponse(
+            '<html><body><h1>QR Code Library Not Installed</h1><p>Please install: pip install qrcode[pil]</p></body></html>',
+            content_type='text/html',
+            status=503
+        )
+    except Exception as e:
+        # Handle any other errors (e.g., missing evaluation_token, URL generation issues)
+        from django.http import HttpResponse
+        return HttpResponse(
+            f'<html><body><h1>Error Generating QR Code</h1><p>{str(e)}</p></body></html>',
+            content_type='text/html',
+            status=500
+        )
+
+
+@project_visibility_required
+def activity_evaluations(request, pk, activity_id):
+    """View all evaluations for a specific activity"""
+    ADMIN_ROLES, SUPERUSER_ROLES, FACULTY_ROLE, COORDINATOR_ROLE = get_role_constants()
+    
+    user_role = getattr(request.user, 'role', None) if request.user.is_authenticated else None
+    
+    if user_role in ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
+        base_template = "base_internal.html"
+        project = get_object_or_404(Project, pk=pk)
+    else:
+        base_template = "base_public.html"
+        if not request.user.is_authenticated:
+            project = get_object_or_404(Project, pk=pk, status='COMPLETED')
+        else:
+            project = get_object_or_404(Project, pk=pk)
+    
+    activity = get_object_or_404(ProjectEvent, pk=activity_id, project=project)
+    evaluations = activity.evaluations.select_related('evaluated_by').order_by('-created_at')
+    
+    # Calculate statistics
+    total_evaluations = evaluations.count()
+    stats = None
+    if total_evaluations > 0:
+        from django.db.models import Avg
+        from django.db.models import Q
+        
+        # Calculate averages for individual criteria
+        trainings_seminars_individual = {
+            'attainment_of_objectives': evaluations.aggregate(Avg('attainment_of_objectives'))['attainment_of_objectives__avg'],
+            'time_management': evaluations.aggregate(Avg('time_management'))['time_management__avg'],
+            'resource_persons_facilitators': evaluations.aggregate(Avg('resource_persons_facilitators'))['resource_persons_facilitators__avg'],
+            'topics': evaluations.aggregate(Avg('topics'))['topics__avg'],
+            'training_venue': evaluations.aggregate(Avg('training_venue'))['training_venue__avg'],
+            'food': evaluations.aggregate(Avg('food'))['food__avg'],
+            'materials_handouts': evaluations.aggregate(Avg('materials_handouts'))['materials_handouts__avg'],
+        }
+        
+        # Calculate overall as average of all sub-items (more accurate than participant's subjective "overall" rating)
+        trainings_seminars_values = [v for v in trainings_seminars_individual.values() if v is not None]
+        trainings_seminars_overall_calculated = sum(trainings_seminars_values) / len(trainings_seminars_values) if trainings_seminars_values else None
+        
+        timeliness_individual = {
+            'held_as_scheduled': evaluations.aggregate(Avg('held_as_scheduled'))['held_as_scheduled__avg'],
+            'answers_present_need': evaluations.aggregate(Avg('answers_present_need'))['answers_present_need__avg'],
+        }
+        
+        # Calculate overall as average of sub-items
+        timeliness_values = [v for v in timeliness_individual.values() if v is not None]
+        timeliness_overall_calculated = sum(timeliness_values) / len(timeliness_values) if timeliness_values else None
+        
+        stats = {
+            'total': total_evaluations,
+            'trainings_seminars': {
+                **trainings_seminars_individual,
+                'overall': trainings_seminars_overall_calculated,  # Use calculated average instead of participant's "overall" field
+            },
+            'timeliness': {
+                **timeliness_individual,
+                'overall': timeliness_overall_calculated,  # Use calculated average instead of participant's "overall" field
+            }
+        }
+    
+    return render(request, 'projects/activity_evaluations.html', {
+        'project': project,
+        'activity': activity,
+        'evaluations': evaluations,
+        'stats': stats,
+        'base_template': base_template,
+        "ADMIN_ROLES": ADMIN_ROLES,
+        "SUPERUSER_ROLES": SUPERUSER_ROLES,
+        "FACULTY_ROLE": FACULTY_ROLE
+    })
+
+
 ########################################################################################################################
 
 
 from django.views.decorators.http import require_POST
 # Mark project as cancelled
-@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"])
+@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"], require_confirmed=True)
 @require_POST
 def cancel_project(request, pk):
+    # timezone is imported at the top
     project = get_object_or_404(Project, pk=pk)
     project.status = 'CANCELLED'
     project.save()
+    
+    # Create project alerts for team members
+    users_to_notify = [project.project_leader]
+    if project.providers.exists():
+        users_to_notify.extend(project.providers.all())
+    
+    for user in users_to_notify:
+        if user:
+            ProjectUpdate.objects.update_or_create(
+                user=user,
+                project=project,
+                submission=None,  # No submission for project status changes
+                status='CANCELLED',
+                defaults={
+                    'viewed': False,
+                    'updated_at': timezone.now(),
+                }
+            )
+    
     return redirect(f'/projects/{pk}/overview/')
 
 # Undo cancel
-@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"])
+@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"], require_confirmed=True)
 @require_POST
 def undo_cancel_project(request, pk):
-    from datetime import date as dtdate
+    # dtdate and timezone are imported at the top
     project = get_object_or_404(Project, pk=pk)
     today = dtdate.today()
+    old_status = project.status
     if project.start_date and project.estimated_end_date:
         if project.start_date <= today <= project.estimated_end_date:
             project.status = 'IN_PROGRESS'
@@ -637,6 +1700,26 @@ def undo_cancel_project(request, pk):
     else:
         project.status = 'IN_PROGRESS'
     project.save()
+    
+    # Create project alerts for team members if status changed
+    if old_status != project.status:
+        users_to_notify = [project.project_leader]
+        if project.providers.exists():
+            users_to_notify.extend(project.providers.all())
+        
+        for user in users_to_notify:
+            if user:
+                ProjectUpdate.objects.update_or_create(
+                    user=user,
+                    project=project,
+                    submission=None,  # No submission for project status changes
+                    status=project.status,
+                    defaults={
+                        'viewed': False,
+                        'updated_at': timezone.now(),
+                    }
+                )
+    
     return redirect(f'/projects/{pk}/overview/')
 
 
@@ -654,15 +1737,52 @@ def projects_dispatcher(request):
     return faculty_project(request)
 
 
-@role_required(allowed_roles=["FACULTY"])
+@role_required(allowed_roles=["FACULTY", "IMPLEMENTER"], require_confirmed=True)
 def faculty_project(request):
     user = request.user
+
+    # Filters
+    sort_by = request.GET.get('sort_by', 'last_updated')
+    order = request.GET.get('order', 'desc')
+    status = request.GET.get('status', '')
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+    search = request.GET.get('search', '')
+
+    
     projects = Project.objects.filter(
         models.Q(project_leader=user) | models.Q(providers=user)
-    ).distinct().order_by('-updated_at')
+    ).distinct()
+
+    # Apply filters
+    if status:
+        projects = projects.filter(status=status)
+    if date_from:
+        projects = projects.filter(start_date__gte=date_from)
+    if date_to:
+        projects = projects.filter(start_date__lte=date_to)
+    if search:
+        projects = projects.filter(title__icontains=search)
+
+    # Sorting
+    if sort_by == 'progress':
+        # For progress sort, convert to list and sort in Python
+        projects_list = list(projects)
+        projects = sorted(projects_list, key=lambda p: (p.progress[0] / p.progress[1]) if p.progress and p.progress[1] else 0, reverse=(order=='desc'))
+    else:
+        # Database sorting for other fields
+        sort_map = {
+            'title': 'title',
+            'last_updated': 'updated_at',
+            'start_date': 'start_date',
+        }
+        sort_field = sort_map.get(sort_by, 'updated_at')
+        if order == 'desc':
+            sort_field = '-' + sort_field
+        projects = projects.order_by(sort_field)
 
     # Pagination
-    paginator = Paginator(projects, 5)
+    paginator = Paginator(projects, 10000000)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
 
@@ -677,15 +1797,54 @@ def faculty_project(request):
     else:
         page_range = range(current - 2, current + 3)
 
+    # Get recent status updates for this user's projects
+    updates_qs = ProjectUpdate.objects.filter(user=user).order_by('-updated_at')[:10]
+    alerts = []
+    for update in updates_qs:
+        # Build message text
+        status_text = {
+            'CANCELLED': 'has been cancelled',
+            'COMPLETED': 'has been completed',
+            'ONGOING': 'is now ongoing',
+            'SCHEDULED': 'is now scheduled',
+            'PROJECT_ASSIGNED': 'you have been assigned to',
+            'PENDING': 'requires a new submission',
+            'FORWARDED': 'submission has been forwarded to UESO',
+            'APPROVED': 'submission has been approved',
+            'REJECTED': 'submission has been rejected',
+            'REVISION_REQUESTED': 'submission requires revision',
+        }.get(update.status, f'status updated to {update.status.replace("_", " ").lower()}')
+        alerts.append({
+            'project_id': update.project.id,
+            'submission_id': update.submission.id if update.submission else None,
+            'title': update.project.title,
+            'status': update.status,
+            'viewed': update.viewed,
+            'updated_at': update.updated_at,
+            'message': f"Your project '{update.project.title}' {status_text}",
+        })
+
+    # Status choices for filter dropdown
+    status_choices = Project.STATUS_CHOICES
+
     return render(request, 'projects/faculty_project.html', {
         'projects': page_obj,
         'page_obj': page_obj,
         'paginator': paginator,
         'page_range': page_range,
+        'my_alerts': alerts,
+        'status_choices': status_choices,
+        'sort_by': sort_by,
+        'order': order,
+        'status': status,
+        'date_from': date_from,
+        'date_to': date_to,
+        'search': search,
+        'querystring': request.GET.urlencode().replace('&page='+str(page_obj.number), '') if page_obj else '',
     })
 
 
-@role_required(allowed_roles=["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"])
+@role_required(allowed_roles=["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"], require_confirmed=True)
 def admin_project(request):
     ADMIN_ROLES = ["VP", "DIRECTOR", "UESO"]
     SUPERUSER_ROLES = ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]
@@ -696,21 +1855,42 @@ def admin_project(request):
     college = request.GET.get('college', '')
     campus = request.GET.get('campus', '')
     agenda = request.GET.get('agenda', '')
+    goal_id = request.GET.get('goal', '')
     status = request.GET.get('status', '')
     year = request.GET.get('year', '')
     quarter = request.GET.get('quarter', '')
-    date = request.GET.get('date', '')
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
     search = request.GET.get('search', '')
 
-    projects = Project.objects.all()
+    if request.user.role in ADMIN_ROLES:
+        projects = Project.objects.all().prefetch_related('providers')
+    elif request.user.role in SUPERUSER_ROLES:
+        user_college = getattr(request.user, 'college', None)
+        if user_college:
+            projects = Project.objects.filter(project_leader__college=user_college).prefetch_related('providers')
+        else:
+            projects = Project.objects.all().prefetch_related('providers')
 
-    # Filter by college/campus via team leader
+    # Apply filters
     if college:
         projects = projects.filter(project_leader__college__id=college)
     if campus:
         projects = projects.filter(project_leader__campus=campus)
     if agenda:
         projects = projects.filter(agenda__id=agenda)
+    # Apply goal-based filters (maps a Goal's criteria to project list)
+    if goal_id:
+        try:
+            goal_obj = Goal.objects.get(pk=int(goal_id))
+            if goal_obj.agenda_id:
+                projects = projects.filter(agenda__id=goal_obj.agenda_id)
+            if goal_obj.project_status:
+                projects = projects.filter(status=goal_obj.project_status)
+            if goal_obj.sdg_id:
+                projects = projects.filter(sdgs__id=goal_obj.sdg_id)
+        except (Goal.DoesNotExist, ValueError):
+            pass
     if status:
         projects = projects.filter(status=status)
     if year:
@@ -721,41 +1901,63 @@ def admin_project(request):
         if quarter in qmap:
             start, end = qmap[quarter]
             projects = projects.filter(start_date__month__gte=start, start_date__month__lte=end)
-    if date:
-        projects = projects.filter(start_date=date)
+    if date_from:
+        projects = projects.filter(start_date__gte=date_from)
+    if date_to:
+        projects = projects.filter(start_date__lte=date_to)
     if search:
-        projects = projects.filter(title__icontains=search)
+        # Search by title, leader name, or provider names
+        title_q = Q(title__icontains=search)
+        leader_q = (
+            Q(project_leader__given_name__icontains=search) | 
+            Q(project_leader__last_name__icontains=search) | 
+            Q(project_leader__username__icontains=search)
+        )
+        provider_q = (
+            Q(providers__given_name__icontains=search) | 
+            Q(providers__last_name__icontains=search) | 
+            Q(providers__username__icontains=search)
+        )
+        projects = projects.filter(title_q | leader_q | provider_q).distinct()
 
     # Sorting
-    sort_map = {
-        'title': 'title',
-        'last_updated': 'updated_at',
-        'start_date': 'start_date',
-        'progress': '', # Placeholder, not supported in DB sort
-    }
-    sort_field = sort_map.get(sort_by, 'title')
-    if sort_field:
+    if sort_by == 'progress':
+        # For progress sort, convert to list and sort in Python
+        projects_list = list(projects)
+        projects = sorted(projects_list, key=lambda p: (p.progress[0] / p.progress[1]) if p.progress and p.progress[1] else 0, reverse=(order=='desc'))
+    else:
+        # Database sorting for other fields
+        sort_map = {
+            'title': 'title',
+            'last_updated': 'updated_at',
+            'start_date': 'start_date',
+        }
+        sort_field = sort_map.get(sort_by, 'updated_at')
         if order == 'desc':
             sort_field = '-' + sort_field
         projects = projects.order_by(sort_field)
-    # If progress sort, sort in Python
-    elif sort_by == 'progress':
-        projects = sorted(projects, key=lambda p: (p.progress[0] / p.progress[1]) if p.progress[1] else 0, reverse=(order=='desc'))
 
     # Filter options
     colleges = College.objects.all()
-    campuses = User.Campus.choices
+    campuses = Campus.objects.all()
     status_choices = Project.STATUS_CHOICES
     agendas = Agenda.objects.all()
-    years = [d.year for d in projects.dates('start_date', 'year')]
+    # Get available years from projects that exist
+    years = list(set([d.year for d in Project.objects.dates('start_date', 'year')]))
+    years.sort(reverse=True)
 
-    # Pagination (optional, mimic old logic if needed)
+    # Pagination
     paginator = Paginator(projects, 20)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     page_range = paginator.get_elided_page_range(page_obj.number)
 
-    return render(request, 'projects/admin_project.html', {
+    # Check for success message from add_project
+    success = request.GET.get('success', '')
+    new_project_id = request.GET.get('new_project_id', '')
+    project_title = request.GET.get('project_title', '')
+
+    response = render(request, 'projects/admin_project.html', {
         'projects': page_obj,
         'colleges': colleges,
         'campuses': campuses,
@@ -767,10 +1969,12 @@ def admin_project(request):
         'college': college,
         'campus': campus,
         'agenda': agenda,
+        'goal': goal_id,
         'status': status,
         'year': year,
         'quarter': quarter,
-        'date': date,
+        'date_from': date_from,
+        'date_to': date_to,
         'search': search,
         'page_obj': page_obj,
         'paginator': paginator,
@@ -778,29 +1982,87 @@ def admin_project(request):
         'querystring': request.GET.urlencode().replace('&page='+str(page_obj.number), '') if page_obj else '',
         "ADMIN_ROLES": ADMIN_ROLES,
         "SUPERUSER_ROLES": SUPERUSER_ROLES,
+        'success': success,
+        'new_project_id': new_project_id,
+        'project_title': project_title,
     })
+    from django.utils.cache import add_never_cache_headers
+    add_never_cache_headers(response)
+    return response
 
 
 ########################################################################################################################
 
 
-from django.utils import timezone
+# timezone is imported at the top
 
-@role_required(allowed_roles=["VP", "DIRECTOR"])
+
+@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"], require_confirmed=True)
 def add_project_view(request):
     error = None
-    faculty_users = User.objects.filter(role=User.Role.FACULTY, is_confirmed=True)
-    provider_users = User.objects.filter(role__in=[User.Role.FACULTY, User.Role.IMPLEMENTER], is_confirmed=True)
+    # All user roles except CLIENT and IMPLEMENTER can be project leader
+    faculty_users = User.objects.filter(is_confirmed=True).exclude(role__in=[User.Role.CLIENT, User.Role.IMPLEMENTER])
+    # All user roles except CLIENT can be provider
+    provider_users = User.objects.filter(is_confirmed=True).exclude(role=User.Role.CLIENT)
     agendas = Agenda.objects.all()
     sdgs = SustainableDevelopmentGoal.objects.all()
     colleges = College.objects.all()
-    campus_choices = User.Campus.choices
+    campus_choices = Campus.objects.all()
+    project_types = ProjectType.objects.all()
 
     logistics_type = 'BOTH'
     if request.method == 'POST':
         form = ProjectForm(request.POST, request.FILES)
-        if form.is_valid():
+        
+        # Print form errors for debugging
+        if not form.is_valid():
+            print("Form validation errors:", form.errors)
+            print("POST data:", request.POST)
+            error = "Form validation failed. Please check all required fields."
+            # Add detailed errors to help debug
+            for field, errors in form.errors.items():
+                print(f"Field '{field}' errors: {errors}")
+            logistics_type = request.POST.get('logistics_type', 'BOTH')
+        else:
             try:
+                # Validate budget before saving
+                # CollegeBudget, datetime, Decimal are imported at the top
+                
+                project_leader = form.cleaned_data.get('project_leader')
+                logistics_type_value = form.cleaned_data['logistics_type']
+                internal_budget_value = form.cleaned_data.get('internal_budget', Decimal('0'))
+                
+                # Check budget if logistics type involves internal funding
+                if logistics_type_value in ['BOTH', 'INTERNAL'] and internal_budget_value > 0:
+                    if not project_leader:
+                        error = "Project leader is required for budget validation."
+                        raise ValueError(error)
+                    
+                    if not project_leader.college:
+                        error = f"Project leader {project_leader.get_full_name()} does not have an assigned college. Budget cannot be validated."
+                        raise ValueError(error)
+                    
+                    # Get current fiscal year
+                    current_year = str(datetime.now().year)
+                    
+                    # Get college budget for current fiscal year
+                    try:
+                        college_budget = CollegeBudget.objects.get(
+                            college=project_leader.college,
+                            fiscal_year=current_year,
+                            status='ACTIVE'
+                        )
+                    except CollegeBudget.DoesNotExist:
+                        error = f"No active budget allocation found for {project_leader.college.name} in fiscal year {current_year}. Cannot create project with internal budget."
+                        raise ValueError(error)
+                    
+                    # Check if budget is sufficient
+                    uncommitted_budget = college_budget.uncommitted_remaining
+                    # Use Decimal formatting placeholder for budget check
+                    if internal_budget_value > uncommitted_budget:
+                        error = f"Insufficient budget for {project_leader.college.name}. Requested: ₱{internal_budget_value:,.2f}, Available: ₱{uncommitted_budget:,.2f}"
+                        raise ValueError(error)
+                
                 # Save project (basic fields)
                 project = form.save(commit=False)
                 project.created_by = request.user
@@ -867,40 +2129,100 @@ def add_project_view(request):
 
                 project.estimated_events = form.cleaned_data.get('estimated_events', 0)
                 now = timezone.now()
-                for i in range(1, project.estimated_events + 1):
-                    from .models import ProjectEvent
-                    ProjectEvent.objects.create(
-                        project=project,
-                        title=f"Event {i}",
-                        description="Description Here",
-                        datetime=now,
-                        status='SCHEDULED',
-                        created_at=now,
-                        created_by=request.user,
-                        updated_at=now,
-                        updated_by=request.user,
-                        image=None,
-                        placeholder=True
-                    )
                 project.save()
 
-                return render(request, 'projects/add_project.html', {
-                    'form': ProjectForm(),
-                    'success': True,
-                    'error': error,
-                    'faculty_users': faculty_users,
-                    'provider_users': provider_users,
-                    'agendas': agendas,
-                    'sdgs': sdgs,
-                    'colleges': colleges,
-                    'campus_choices': campus_choices,
-                    'logistics_type': logistics_type,
-                })
+                # Handle expense breakdown
+                expense_counter = 0
+                total_expenses = Decimal('0')
+                expenses_to_create = []
+                
+                while True:
+                    title_key = f'expense_title_{expense_counter}'
+                    reason_key = f'expense_reason_{expense_counter}'
+                    amount_key = f'expense_amount_{expense_counter}'
+                    
+                    if title_key not in request.POST:
+                        break
+                    
+                    title = request.POST.get(title_key, '').strip()
+                    reason = request.POST.get(reason_key, '').strip()
+                    amount_str = request.POST.get(amount_key, '').strip()
+                    
+                    # Validate expense data
+                    if not title or not reason or not amount_str:
+                        error = f"Expense row {expense_counter + 1} has missing fields."
+                        project.delete()  # Rollback project creation
+                        raise ValueError(error)
+                    
+                    try:
+                        amount = Decimal(amount_str)
+                        if amount <= 0:
+                            error = f"Expense row {expense_counter + 1} has invalid amount. Amount must be greater than 0."
+                            project.delete()  # Rollback project creation
+                            raise ValueError(error)
+                    except (ValueError, InvalidOperation):
+                        error = f"Expense row {expense_counter + 1} has invalid amount format."
+                        project.delete()  # Rollback project creation
+                        raise ValueError(error)
+                    
+                    # Add to total and store for batch creation
+                    total_expenses += amount
+                    expenses_to_create.append({
+                        'title': title,
+                        'reason': reason,
+                        'amount': amount
+                    })
+                    
+                    expense_counter += 1
+                
+                # Ensure at least one expense was created
+                if expense_counter == 0:
+                    error = "At least one expense item is required."
+                    project.delete()  # Rollback project creation
+                    raise ValueError(error)
+                
+                # Validate total expenses don't exceed budget
+                total_budget = (project.internal_budget or Decimal('0')) + (project.external_budget or Decimal('0'))
+                if total_expenses > total_budget:
+                    error = f"Total expenses (₱{total_expenses:,.2f}) exceed allocated budget (₱{total_budget:,.2f}). Please adjust your expenses."
+                    project.delete()  # Rollback project creation
+                    raise ValueError(error)
+                
+                # Create all expenses after validation
+                # Note: event is set to None since activities don't exist yet during project creation
+                for expense_data in expenses_to_create:
+                    ProjectExpense.objects.create(
+                        project=project,
+                        event=None,  # Activities are created after project creation
+                        title=expense_data['title'],
+                        reason=expense_data['reason'],
+                        amount=expense_data['amount'],
+                        date_incurred=timezone.now().date(),
+                        created_by=request.user
+                    )
+
+                # Create alerts for project members about being added to the project
+                from .models import ProjectUpdate
+                project_members = list(project.providers.all())  # Get all project providers
+                if project.project_leader:  # Add project leader if exists
+                    project_members.append(project.project_leader)
+                
+                for member in project_members:
+                    ProjectUpdate.objects.create(
+                        user=member,
+                        project=project,
+                        submission=None,  # No submission for project creation alerts
+                        status='PROJECT_ASSIGNED',
+                        viewed=False,
+                        updated_at=timezone.now()
+                    )
+
+                # Redirect to admin_project with success message and new project ID
+                from urllib.parse import quote
+                return redirect(f'/projects/?success=true&new_project_id={project.id}&project_title={quote(project.title)}')
             except Exception as e:
                 error = str(e)
-        else:
-            error = "Please correct the errors below."
-        logistics_type = request.POST.get('logistics_type', 'BOTH')
+                logistics_type = request.POST.get('logistics_type', 'BOTH')
     else:
         form = ProjectForm()
     return render(request, 'projects/add_project.html', {
@@ -913,4 +2235,213 @@ def add_project_view(request):
         'colleges': colleges,
         'campus_choices': campus_choices,
         'logistics_type': logistics_type,
+        'project_types': project_types,
     })
+
+
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"], require_confirmed=True)
+def check_college_budget(request):
+    """AJAX endpoint to validate college budget availability"""
+    # JsonResponse, CollegeBudget, datetime, Decimal are imported at the top
+    
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Invalid request method'}, status=405)
+    
+    project_leader_id = request.GET.get('project_leader_id')
+    internal_budget = request.GET.get('internal_budget', '0')
+    
+    if not project_leader_id:
+        return JsonResponse({'error': 'Project leader is required'}, status=400)
+    
+    try:
+        # Get project leader
+        leader = User.objects.select_related('college').get(id=project_leader_id)
+        
+        if not leader.college:
+            return JsonResponse({
+                'valid': False,
+                'error': 'Selected project leader does not have an assigned college.',
+                'college_name': None,
+                'total_budget': 0,
+                'uncommitted': 0,
+                'remaining': 0
+            })
+        
+        # Parse the internal budget
+        try:
+            requested_budget = Decimal(internal_budget) if internal_budget else Decimal('0')
+        except:
+            return JsonResponse({
+                'valid': False,
+                'error': 'Invalid budget amount.',
+                'college_name': leader.college.name,
+                'total_budget': 0,
+                'uncommitted': 0,
+                'remaining': 0
+            })
+        
+        # Get current fiscal year
+        current_year = str(datetime.now().year)
+        
+        # Get college budget for current fiscal year
+        try:
+            college_budget = CollegeBudget.objects.get(
+                college=leader.college,
+                fiscal_year=current_year,
+                status='ACTIVE'
+            )
+        except CollegeBudget.DoesNotExist:
+            return JsonResponse({
+                'valid': False,
+                'error': f'No active budget allocation found for {leader.college.name} in fiscal year {current_year}.',
+                'college_name': leader.college.name,
+                'total_budget': 0,
+                'uncommitted': 0,
+                'remaining': 0
+            })
+        
+        # Calculate available budget
+        uncommitted_budget = college_budget.uncommitted_remaining
+        remaining_after_project = uncommitted_budget - requested_budget
+        
+        # Check if requested budget exceeds available
+        # Use float(Decimal) for JsonResponse serialization
+        if requested_budget > uncommitted_budget:
+            return JsonResponse({
+                'valid': False,
+                'error': f'Requested budget (₱{requested_budget:,.2f}) exceeds available budget (₱{uncommitted_budget:,.2f}) for {leader.college.name}.',
+                'college_name': leader.college.name,
+                'total_budget': float(college_budget.total_assigned),
+                'uncommitted': float(uncommitted_budget),
+                'remaining': float(remaining_after_project),
+                'requested': float(requested_budget)
+            })
+        
+        # Budget is valid
+        return JsonResponse({
+            'valid': True,
+            'message': f'Budget allocation is valid. Available: ₱{uncommitted_budget:,.2f}',
+            'college_name': leader.college.name,
+            'total_budget': float(college_budget.total_assigned),
+            'uncommitted': float(uncommitted_budget),
+            'remaining': float(remaining_after_project),
+            'requested': float(requested_budget)
+        })
+        
+    except User.DoesNotExist:
+        return JsonResponse({
+            'valid': False,
+            'error': 'Project leader not found.',
+            'college_name': None,
+            'total_budget': 0,
+            'uncommitted': 0,
+            'remaining': 0
+        }, status=404)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Error checking college budget")
+        return JsonResponse({
+            'valid': False,
+            'error': 'Error checking budget.',
+            'college_name': None,
+            'total_budget': 0,
+            'uncommitted': 0,
+            'remaining': 0
+        }, status=500)
+
+
+@role_required(allowed_roles=["UESO", "VP", "DIRECTOR"], require_confirmed=True)
+def delete_project(request, pk):
+    """Delete a project with safety checks to avoid deleting implemented/active projects."""
+    from django.contrib import messages
+    from system.logs.models import LogEntry
+    from system.notifications.models import Notification
+    from system.users.models import User
+    
+    if request.method == "POST":
+        try:
+            project = Project.objects.select_related('project_leader__college').prefetch_related('providers').get(pk=pk)
+
+            # Safety check: limit what can be deleted
+            if not project.can_be_deleted:
+                from django.urls import reverse
+                messages.error(
+                    request,
+                    "Projects can only be deleted if they are inactive or past their deadline and have not been implemented (no final submission)."
+                )
+                return redirect(reverse('project_profile', args=[pk]))
+
+            project_title = project.title
+            project_leader = project.project_leader
+            project_college = project_leader.college if project_leader else None
+            
+            # Get all people involved for notifications
+            notification_recipients = []
+            if project_leader:
+                notification_recipients.append(project_leader)
+            notification_recipients.extend(list(project.providers.all()))
+            
+            # Also notify coordinator of the same college
+            if project_college:
+                coordinators = User.objects.filter(
+                    role='COORDINATOR',
+                    college=project_college,
+                    is_confirmed=True,
+                    is_active=True
+                )
+                notification_recipients.extend(coordinators)
+            
+            # Notify UESO, Director, VP
+            supervisors = User.objects.filter(
+                role__in=['UESO', 'DIRECTOR', 'VP'],
+                is_confirmed=True,
+                is_active=True
+            )
+            notification_recipients.extend(supervisors)
+            
+            # Remove duplicates
+            notification_recipients = list(set(notification_recipients))
+            
+            # Create log entry BEFORE deletion (so we still have the project data)
+            log_entry = LogEntry.objects.create(
+                user=request.user,
+                action='DELETE',
+                model='Project',
+                object_id=project.id,
+                object_repr=project_title,
+                details=f"Project '{project_title}' and all related data (submissions, events, files) have been deleted by {request.user.get_full_name()}",
+                url='',  # No URL since the project no longer exists
+                is_notification=False  # We'll create notifications manually
+            )
+            
+            # Create notifications manually for all involved users (except the actor)
+            notifications_to_create = [
+                Notification(
+                    recipient=recipient,
+                    actor=request.user,
+                    action='DELETE',
+                    model='Project',
+                    object_id=project.id,
+                    object_repr=project_title,
+                    details=f"Project '{project_title}' has been deleted",
+                    url='',
+                )
+                for recipient in notification_recipients
+                if recipient != request.user  # Don't notify the person who deleted it
+            ]
+            
+            if notifications_to_create:
+                Notification.objects.bulk_create(notifications_to_create, batch_size=100)
+            
+            # Delete the project (this will cascade delete related submissions, events, etc.)
+            project.delete()
+            
+            messages.success(request, f'Project \"{project_title}\" has been deleted successfully.')
+            
+            # Redirect with toast parameters
+            from urllib.parse import quote
+            return redirect(f'/projects/?success=true&action=deleted&title={quote(project_title)}')
+        except Project.DoesNotExist:
+            messages.error(request, 'Project not found.')
+    
+    return redirect('project_dispatcher')

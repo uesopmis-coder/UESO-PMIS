@@ -1,11 +1,16 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;700&family=Inter:wght@300;400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link rel="shortcut icon" type="ico" href="{% static 'ueso.ico' %}">
+<script src="{% static 'system/file_upload_validator.js' %}" defer></script>
 
 <style>
     .app-container {
@@ -27,15 +32,21 @@
     <div class="app-container">
         <div class="navbar">
             {% if user.is_authenticated %}
-                {% include "navbars/"|add:request.user.role|add:"_navbar.html" %}
+                {% with navbar_name=request.user.role|lower|add:"_navbar.html" %}
+                {% include "navbars/"|add:navbar_name %}
+                {% endwith %}
             {% else %}
                 {% include "navbars/public_navbar.html" %}
             {% endif %}
         </div>
-
+        
         <div class="main-content">
             {% block content %}
             {% endblock %}
+        </div>
+
+        <div class="footer">
+            {% include "footer.html" %}
         </div>
     </div>
 </body>

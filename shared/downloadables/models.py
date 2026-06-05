@@ -1,5 +1,8 @@
 from django.db import models
 from django.conf import settings
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+from system.utils.file_validators import validate_file_size, validate_image_size
 import os
 
 class Downloadable(models.Model):
@@ -16,8 +19,8 @@ class Downloadable(models.Model):
         ('published', 'Published'),
         ('archived', 'Archived'),
     ]
-    file = models.FileField(upload_to='downloadables/files/')
-    thumbnail = models.ImageField(upload_to='downloadables/thumbnails/', blank=True, null=True)
+    file = models.FileField(upload_to='downloadables/files/', validators=[validate_file_size])
+    thumbnail = models.ImageField(upload_to='downloadables/thumbnails/', blank=True, null=True, validators=[validate_image_size])
     available_for_non_users = models.BooleanField(default=False, help_text="Available for non-logged-in users")
     uploaded_at = models.DateTimeField(auto_now_add=True)
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='uploaded_downloadables')
@@ -31,11 +34,36 @@ class Downloadable(models.Model):
     ]
     submission_type = models.CharField(max_length=10, choices=SUBMISSION_TYPE_CHOICES, default='file')
 
+    class Meta:
+        indexes = [
+            # Primary listing: Published files (authenticated users)
+            models.Index(fields=['status', '-uploaded_at'], name='dl_status_date_idx'),
+            # Public access filtering (non-authenticated users)
+            models.Index(fields=['status', 'available_for_non_users'], name='dl_public_idx'),
+            # File type filtering
+            models.Index(fields=['file_type', 'status'], name='dl_type_status_idx'),
+            # Submission template filtering (heavily used in submission views)
+            models.Index(fields=['is_submission_template', 'submission_type'], name='dl_template_type_idx'),
+            # Uploader tracking
+            models.Index(fields=['uploaded_by', '-uploaded_at'], name='dl_uploader_idx'),
+            # File search (name-based)
+            models.Index(fields=['status', 'file_type'], name='dl_browse_idx'),
+        ]
+        verbose_name = 'Downloadable'
+        verbose_name_plural = 'Downloadables'
+        ordering = ['-uploaded_at']
+
     @property
     def name(self):
         if self.file:
             base = os.path.basename(self.file.name)
             return os.path.splitext(base)[0]
+        return ""
+
+    @property
+    def name_with_ext(self):
+        if self.file:
+            return os.path.basename(self.file.name)
         return ""
 
     @property
@@ -84,3 +112,32 @@ class Downloadable(models.Model):
                 import logging
                 logging.error(f"Thumbnail generation failed for {self.file.name}: {e}")
         super().save(*args, **kwargs)
+
+
+@receiver(post_save, sender=Downloadable)
+def log_downloadable_action(sender, instance, created, **kwargs):
+    from system.logs.models import LogEntry
+	# Skip logging if this is being called from within a signal to avoid duplicates
+    if hasattr(instance, '_skip_log'):
+        return
+    action = 'CREATE' if created else 'UPDATE'
+    LogEntry.objects.create(
+        user=instance.uploaded_by,
+        action=action,
+        model='Downloadable',
+        object_id=instance.id,
+        object_repr=str(instance),
+        details=f"File Type: {instance.file_type}, Status: {instance.status}"
+    )
+
+
+@receiver(post_delete, sender=Downloadable)
+def log_downloadable_delete(sender, instance, **kwargs):
+    from system.logs.models import LogEntry
+    LogEntry.objects.create(
+        user=instance.uploaded_by,
+        action='DELETE',
+        model='Downloadable',
+        object_id=instance.id,
+        object_repr=str(instance),
+    )

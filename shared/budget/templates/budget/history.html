@@ -1,0 +1,106 @@
+{% extends base_template %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ title }}</title>
+<link href="https://fonts.googleapis.com/css?family=Inter:400,500,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link href="{% static 'shared/budget/styles.css' %}" rel="stylesheet">
+</head>
+<body>
+    <div class="main-container">
+
+        <div class="container-1">
+            <div class="container-1A">
+                <h1 class="welcome-text">{{ title }}</h1>
+            </div>
+            <a href="{% url 'budget_dashboard' %}" class="export-btn view">
+                &larr; Back to Dashboard
+            </a>
+        </div>
+        
+        <div class="another-header">
+            <h2>Log History</h2>
+        </div>
+
+        <div class="table-container">
+            <div class="table-wrapper">
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>User</th>
+                            <th>Action</th>
+                            <th>Amount</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in page_obj %}
+                        <tr>
+                            <td style="white-space: nowrap;">{{ entry.timestamp|date:"Y-m-d H:i" }}</td>
+                            <td>{{ entry.user.get_full_name|default:"System" }}</td>
+                            <td>
+                                <span class="action-tag 
+                                    {% if entry.action == 'ALLOCATED' %}action-allocated
+                                    {% elif entry.action == 'ADJUSTED' %}action-adjusted
+                                    {% else %}action-default
+                                    {% endif %}">
+                                    {{ entry.get_action_display }}
+                                <span>
+                            </td>
+                            <td class="font-bold" style="white-space: nowrap;">₱{{ entry.amount|intcomma }}</td>
+                            <td style="width: 35%;">{{ entry.description }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center" style="color: #6b7280; padding: 20px;">
+                                No budget history found.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            {% if page_obj.has_other_pages %}
+            <nav aria-label="Page navigation">
+                <ul class="pagination">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?page=1">&laquo; First</a></li>
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1" aria-disabled="true">&laquo; First</a></li>
+                        <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1" aria-disabled="true">Previous</a></li>
+                    {% endif %}
+
+                    {% for num in page_obj.paginator.page_range %}
+                        {% if page_obj.number == num %}
+                            <li class="page-item active"><a class="page-link" href="#">{{ num }}</a></li>
+                        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                            <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Last &raquo;</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1" aria-disabled="true">Next</a></li>
+                        <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1" aria-disabled="true">Last &raquo;</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
+{% endblock %}

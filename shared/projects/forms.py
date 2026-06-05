@@ -1,5 +1,5 @@
 from django import forms
-from .models import Project, ProjectEvent
+from .models import Project, ProjectEvent, ProjectType
 
 
 class ProjectForm(forms.ModelForm):
@@ -15,4 +15,10 @@ class ProjectForm(forms.ModelForm):
 class ProjectEventForm(forms.ModelForm):
     class Meta:
         model = ProjectEvent
-        fields = ['title', 'description', 'datetime', 'location', 'image']
+        fields = ['title', 'description', 'allocated_budget']
+
+# NEW CRUD
+class ProjectTypeForm(forms.ModelForm):
+    class Meta:
+        model = ProjectType
+        fields = ['name']

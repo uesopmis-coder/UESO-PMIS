@@ -1,27 +1,36 @@
+from django.http import HttpResponse
 from django.urls import path
 from .views import login_view, logout_view, register_view, quick_login, role_redirect, home, dashboard, forgot_password_view
-from .views import registration_client_view, registration_faculty_view, registration_implementer_view, client_verify_view, faculty_verify_view, implementer_verify_view, thank_you_view
+from .views import verify_login_2fa_view, send_password_reset_code_view, verify_reset_code_view, reset_password_view
+from .views import session_test_view
+from .views import registration_unified_view, verify_unified_view, thank_you_view, send_verification_code_view
 from .views import not_authenticated_view, no_permission_view, not_confirmed_view
 from .views import manage_user, add_user, user_details_view, edit_user, check_email_view, verify_user, unverify_user, delete_user
+from .views import profile_view, update_bio, update_profile_picture
+from .views import health_check, complete_google_profile_view, select_google_role_view, cancel_google_signup
 
 urlpatterns = [
+    path('session-test/', session_test_view, name='session_test'),  # Session Test Page
 
     # User Authentication URLs
     path('login/', login_view, name='login'),                   # Login URL
+    path('verify-login-2fa/', verify_login_2fa_view, name='verify_login_2fa'),  # Login 2FA Verification
     path('logout/', logout_view, name='logout'),                # Logout URL
     path('register/', register_view, name='register'),          # Registration URL
     path('redirector/', role_redirect, name='role_redirect'),   
     path('forgot-password/1/', forgot_password_view, name='forgot_password'),
+    path('send-password-reset-code/', send_password_reset_code_view, name='send_password_reset_code'),
+    path('verify-reset-code/', verify_reset_code_view, name='verify_reset_code'),
+    path('reset-password/', reset_password_view, name='reset_password'),
 
-    # Registration URLs
-    path('check-email/', check_email_view, name='check_email'),
-    path('register/client/', registration_client_view, name='registration_client'),
-    path('register/client/verify/', client_verify_view, name='verify_client'), 
-    path('register/faculty/', registration_faculty_view, name='registration_faculty'),
-    path('register/faculty/verify/', faculty_verify_view, name='verify_faculty'),
-    path('register/implementer/', registration_implementer_view, name='registration_implementer'),
-    path('register/implementer/verify/', implementer_verify_view, name='verify_implementer'),  
+    # New Unified Registration URLs
+    path('register/<str:role>/', registration_unified_view, name='registration_unified'),
+    path('register/verify/', verify_unified_view, name='verify_unified'),
     path('register/thank-you/', thank_you_view, name='thank_you'),
+    path('send-verification-code/', send_verification_code_view, name='send_verification_code'),
+
+    # Email Check
+    path('check-email/', check_email_view, name='check_email'),
 
     # Error Handling URLs
     path('not-authenticated/', not_authenticated_view, name='not_authenticated'),   # 403 Not Authenticated
@@ -39,7 +48,25 @@ urlpatterns = [
     path('users/verify/<int:id>/', verify_user, name='verify_user'),            # Verify User
     path('users/unverify/<int:id>/', unverify_user, name='unverify_user'),      # Unverify User
 
-    path('', role_redirect, name='role_redirect'),              # Default Redirector
+    # User Profile URLs
+    path('profile/', profile_view, name='profile'),                             # User Profile
+    path('profile/<int:id>/', profile_view, name='user_profile'),               # View Any User Profile
+    path('profile/update-bio/', update_bio, name='update_bio'),                 # Update Bio
+    path('profile/update-picture/', update_profile_picture, name='update_profile_picture'),  # Update Profile Picture
+    path('complete-profile/', complete_google_profile_view, name='complete_google_profile'),  # Complete Google Profile
+    path('select-role/', select_google_role_view, name='select_google_role'),  # Select Role for Google Users
+    path('google-cancel/', cancel_google_signup, name='cancel_google_signup'),  # Cancel Google signup
 
-    path('quick-login/<str:role>/', quick_login, name='quick_login'),       # Quick Login URL (For Testing Purposes)
+    path('', role_redirect, name='role_redirect'),              # Default Redirector
+    
+    path('health/', health_check, name='health_check'),
+
+    path('quick-login/<str:role>/', quick_login, name='quick_login')
 ]
+
+import os
+
+if os.environ.get('DEPLOYED', 'False') != 'True':
+    urlpatterns.append(
+        path('quick-login/<str:role>/', quick_login, name='quick_login')
+    )

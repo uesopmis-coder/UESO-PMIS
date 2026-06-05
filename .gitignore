@@ -16,8 +16,12 @@ staticfiles/
 
 # Editor/OS
 .DS_Store
-.vscode/
 .idea/
 
 # Migrations backup
 *.bak
+
+# Ignore specific files
+**/migrations/*.py
+celerybeat-schedule*
+dump.rdb

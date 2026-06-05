@@ -1,12 +1,755 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404, redirect
+from django.db import transaction
+from django.contrib import messages
+from django.core.paginator import Paginator
+from decimal import Decimal
+import json
+from django.utils import timezone
+
+from django.db.models import Q, Sum, Value, DecimalField, F
+from django.db.models.functions import Coalesce, TruncMonth
+
 from system.users.decorators import role_required
+from system.users.models import College
+from shared.projects.models import Project, ProjectExpense
+
+from .models import CollegeBudget, BudgetPool, BudgetHistory, BudgetPool
+
+from .forms import AnnualBudgetForm, CollegeAllocationForm, ProjectInternalBudgetForm, ExternalFundingEditForm
+
+from django.http import HttpResponse, JsonResponse
+import csv
 
 
-def get_role_constants():
-    INTERNAL_ROLES = ["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"]
-    INTERNAL_WITH_COLLEGE_ROLES = ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]
-    FACULTY_ROLES = ["FACULTY", "IMPLEMENTER"]
-    return INTERNAL_ROLES, INTERNAL_WITH_COLLEGE_ROLES, FACULTY_ROLES
+def get_current_fiscal_year():
+    return str(timezone.now().year)
+
+def _get_admin_dashboard_data(fiscal_year):
+    all_colleges = College.objects.all().order_by('name')
+
+    college_budget_map = {
+        cb.college_id: cb for cb in CollegeBudget.objects.filter(
+            status='ACTIVE',
+            fiscal_year=fiscal_year
+        )
+    }
+
+    project_budgets_by_college = Project.objects.filter(
+        project_leader__college__isnull=False,
+        start_date__year=int(fiscal_year)
+    ).values('project_leader__college').annotate(
+        total_internal=Coalesce(Sum('internal_budget'), Value(Decimal('0.0')), output_field=DecimalField()),
+        total_external=Coalesce(Sum('external_budget'), Value(Decimal('0.0')), output_field=DecimalField())
+    ).order_by('project_leader__college')
+
+    project_budget_map = {
+        item['project_leader__college']: {
+            'internal': item['total_internal'],
+            'external': item['total_external']
+        }
+        for item in project_budgets_by_college
+    }
+
+    dashboard_data = []
+    total_committed_agg = Decimal('0')
+    total_external_agg = Decimal('0')
+    total_assigned_to_colleges = Decimal('0')
+
+    for college in all_colleges:
+        college_budget = college_budget_map.get(college.id)
+        project_metrics = project_budget_map.get(college.id, {'internal': Decimal('0'), 'external': Decimal('0')})
+
+        current_committed = project_metrics['internal']
+        current_external = project_metrics['external']
+
+        if college_budget:
+            original_cut = college_budget.total_assigned
+            uncommitted_remaining = original_cut - current_committed
+        else:
+            original_cut = Decimal('0')
+            uncommitted_remaining = Decimal('0') - current_committed
+
+        total_committed_agg += current_committed
+        total_external_agg += current_external
+        total_assigned_to_colleges += original_cut
+
+        dashboard_data.append({
+            'id': college_budget.id if college_budget else None,
+            'college_id': college.id,
+            'college_name': college.name,
+            'original_cut': original_cut,
+            'committed_funding': current_committed,
+            'uncommitted_remaining': uncommitted_remaining,
+            'external_funding': current_external
+        })
+
+    current_pool = BudgetPool.objects.filter(fiscal_year=fiscal_year).first()
+    pool_available = current_pool.total_available if current_pool else Decimal('0')
+    pool_unallocated_remaining = pool_available - total_assigned_to_colleges
+
+    year_int = int(fiscal_year)
+
+    # --- Monthly Pool Value Calculation ---
+    pool_history_qs = BudgetHistory.objects.filter(
+        Q(description__icontains='Annual Budget Pool'),
+        timestamp__year=year_int
+    ).order_by('timestamp')
+
+    pool_values = {i: Decimal('0') for i in range(1, 13)}
+    
+    first_history = pool_history_qs.first()
+    initial_pool_value = pool_available
+    
+    if first_history:
+        current_pool_value_tracker = first_history.amount
+        start_month = first_history.timestamp.month
+        
+        for m in range(1, start_month):
+            pool_values[m] = current_pool_value_tracker
+        
+        pool_values[start_month] = current_pool_value_tracker
+
+        for history in pool_history_qs:
+            month_of_change = history.timestamp.month
+            new_pool_value = history.amount
+            
+            for m in range(month_of_change, 13):
+                pool_values[m] = new_pool_value
+    else:
+        for m in range(1, 13):
+            pool_values[m] = pool_available
+
+    # --- Monthly Assigned to Colleges Calculation (Reworked to use total_assigned_to_colleges as anchor) ---
+    assigned_history_qs_all = BudgetHistory.objects.filter(
+        Q(description__icontains='college cut') | Q(description__icontains='College cut'),
+        timestamp__year=year_int,
+        action__in=['ALLOCATED', 'ADJUSTED']
+    )
+
+    monthly_changes_by_trunc = assigned_history_qs_all.annotate(
+        month=TruncMonth('timestamp')
+    ).values('month').annotate(
+        net_change=Sum('amount')
+    ).order_by('month')
+    
+    monthly_net_changes = {i: Decimal('0') for i in range(1, 13)}
+    total_history_change = Decimal('0')
+    for item in monthly_changes_by_trunc:
+        month_num = item['month'].month
+        change = item['net_change']
+        monthly_net_changes[month_num] = change
+        total_history_change += change
+
+    # Calculate the starting balance (allocations made before history started tracking in this year)
+    # This ensures the running total ends exactly at total_assigned_to_colleges.
+    starting_assigned_balance = total_assigned_to_colleges - total_history_change
+
+    assigned_cumulatives_raw = {i: starting_assigned_balance for i in range(1, 13)}
+    assigned_running_total_monthly = starting_assigned_balance
+    
+    # Calculate the cumulative assigned value month-by-month
+    for m in range(1, 13):
+        assigned_running_total_monthly += monthly_net_changes[m]
+        assigned_cumulatives_raw[m] = assigned_running_total_monthly
+    
+    # Actual unallocated pesos per month (pool - assigned cumulatives)
+    unallocated_data_raw = [float((pool_values[m] - assigned_cumulatives_raw[m])) for m in range(1, 13)]
+
+    # Normalized (0-100) values for mini sparkline charts
+    max_pool_available = max(pool_values.values()) if pool_values else Decimal('0')
+    max_norm_value = max_pool_available if max_pool_available > Decimal('0') else Decimal('1')
+
+    # --- Normalized Assigned to Colleges Data (for mini chart) ---
+    assigned_cumulative_data = []
+    for m in range(1, 13):
+        # We use the raw cumulative value for normalization
+        running_total = assigned_cumulatives_raw[m] 
+        if total_assigned_to_colleges > 0:
+            normalized_value = (running_total / total_assigned_to_colleges) * 100
+            normalized_value = min(100, max(0, int(normalized_value)))
+        else:
+            normalized_value = 0
+        assigned_cumulative_data.append(int(normalized_value))
+
+    # --- Normalized Internal Committed Data ---
+    project_internal_monthly = Project.objects.filter(
+        start_date__year=year_int,
+        internal_budget__gt=0
+    ).annotate(
+        month=TruncMonth('start_date')
+    ).values('month').annotate(
+        monthly_commitment=Sum('internal_budget')
+    ).order_by('month')
+
+    internal_monthly_commitments = {i: Decimal('0') for i in range(1, 13)}
+    for item in project_internal_monthly:
+        month = item['month'].month
+        internal_monthly_commitments[month] = item['monthly_commitment']
+
+    internal_cumulative_data = []
+    running_total = Decimal('0')
+    for month in range(1, 13):
+        running_total += internal_monthly_commitments[month]
+        if total_committed_agg > 0:
+            normalized_value = (running_total / total_committed_agg) * 100
+            normalized_value = min(100, max(0, int(normalized_value)))
+        else:
+            normalized_value = 0
+        internal_cumulative_data.append(int(normalized_value))
+
+
+    # --- Normalized External Committed Data ---
+    project_external_monthly = Project.objects.filter(
+        start_date__year=year_int,
+        external_budget__gt=0
+    ).annotate(
+        month=TruncMonth('start_date')
+    ).values('month').annotate(
+        monthly_commitment=Sum('external_budget')
+    ).order_by('month')
+
+    external_monthly_commitments = {i: Decimal('0') for i in range(1, 13)}
+    for item in project_external_monthly:
+        month = item['month'].month
+        external_monthly_commitments[month] = item['monthly_commitment']
+
+    external_cumulative_data = []
+    running_total = Decimal('0')
+    for month in range(1, 13):
+        running_total += external_monthly_commitments[month]
+        if total_external_agg > 0:
+            normalized_value = (running_total / total_external_agg) * 100
+            normalized_value = min(100, max(0, int(normalized_value)))
+        else:
+            normalized_value = 0
+        external_cumulative_data.append(int(normalized_value))
+    
+    # --- JSON Serialization ---
+    unallocated_data_json = json.dumps(unallocated_data_raw)
+    unallocated_data_raw_json = json.dumps([f"₱{v:,.2f}" for v in unallocated_data_raw])
+    assigned_data_json = json.dumps(assigned_cumulative_data)
+    internal_committed_data_json = json.dumps(internal_cumulative_data)
+    external_data_json = json.dumps(external_cumulative_data)
+
+    return {
+        "is_setup": current_pool is not None,
+        "pool_available": pool_available,
+        "pool_unallocated_remaining": pool_unallocated_remaining,
+        "total_assigned_to_colleges": total_assigned_to_colleges,
+        "total_committed_to_projects_agg": total_committed_agg,
+        "total_external_to_projects_agg": total_external_agg,
+        "dashboard_data": dashboard_data,
+        "assigned_data_json": assigned_data_json,
+        "committed_internal_data_json": internal_committed_data_json,
+        "committed_external_data_json": external_data_json,
+        "unallocated_data_json": unallocated_data_json,
+        "unallocated_data_raw_json": unallocated_data_raw_json,
+    }
+
+def _get_college_dashboard_data(user, fiscal_year):
+    from django.db.models.functions import Coalesce, TruncMonth
+    from django.db.models import Q, Sum, Value, DecimalField
+    from decimal import Decimal
+    import json
+    
+    def get_current_fiscal_year():
+        from django.utils import timezone
+        return str(timezone.now().year)
+
+
+    user_college = getattr(user, 'college', None)
+    if not user_college:
+        return {"is_setup": True, "error": "User is not assigned to a College."}
+
+    college_budget = CollegeBudget.objects.filter(
+        college=user_college,
+        fiscal_year=fiscal_year,
+        status='ACTIVE'
+    ).first()
+
+    if not college_budget:
+        return {"is_setup": False, "college_name": user_college.name}
+
+    year_int = int(fiscal_year)
+    total_assigned = college_budget.total_assigned
+
+    projects_current_year = Project.objects.filter(
+        Q(internal_budget__gt=0) | Q(external_budget__gt=0), 
+        
+        project_leader__college=user_college, 
+        start_date__year=year_int,           
+    ).select_related('project_leader').order_by('title')
+
+    project_list = []
+    total_committed_internal = Decimal('0.0')
+    total_committed_external = Decimal('0.0')
+
+    # Pre-fetch expenses for all projects to avoid N+1 queries
+    project_ids = list(projects_current_year.values_list('id', flat=True))
+    expenses_by_project = ProjectExpense.objects.filter(
+        project_id__in=project_ids
+    ).values('project_id').annotate(
+        total_expenses=Sum('amount')
+    )
+    
+    # Create a dictionary for quick lookup
+    expenses_dict = {item['project_id']: item['total_expenses'] or Decimal('0') 
+                     for item in expenses_by_project}
+
+    for project in projects_current_year:
+        assigned = project.internal_budget or Decimal('0')
+        external = project.external_budget or Decimal('0')
+        # Calculate used_budget directly from expenses to ensure accuracy
+        used = expenses_dict.get(project.id, Decimal('0'))
+
+        total_committed_internal += assigned
+        total_committed_external += external
+
+        project_list.append({
+            'id': project.id,
+            'title': project.title,
+            'status': project.get_status_display(),
+            'internal_funding_committed': assigned,
+            'external_funding_committed': external,
+            'used_budget': used,
+            'remaining_budget': max(Decimal('0'), assigned - used),
+        })
+    
+    uncommitted_remaining = total_assigned - total_committed_internal
+
+    norm_denominator_internal = total_assigned if total_assigned > 0 else Decimal('1') 
+    norm_denominator_external = total_committed_external if total_committed_external > 0 else Decimal('1') 
+
+    project_internal_monthly = projects_current_year.filter(
+        internal_budget__gt=0
+    ).annotate(
+        month=TruncMonth('start_date')
+    ).values('month').annotate(
+        monthly_commitment=Sum('internal_budget')
+    ).order_by('month')
+
+    internal_monthly_commitments = {i: Decimal('0') for i in range(1, 13)}
+    for item in project_internal_monthly:
+        internal_monthly_commitments[item['month'].month] += item['monthly_commitment']
+
+    assigned_history_qs = BudgetHistory.objects.filter(
+        college_budget__college=user_college,
+        timestamp__year=year_int,
+        action__in=['ALLOCATED', 'ADJUSTED']
+    )
+
+    monthly_assigned_changes = assigned_history_qs.annotate(
+        month=TruncMonth('timestamp')
+    ).values('month').annotate(
+        net_change=Sum('amount')
+    ).order_by('month')
+
+    monthly_assigned_cuts = {i: Decimal('0') for i in range(1, 13)}
+    for item in monthly_assigned_changes:
+        monthly_assigned_cuts[item['month'].month] = item['net_change']
+
+    assigned_cumulatives_college = []
+    running_total_assigned = Decimal('0')
+    for month in range(1, 13):
+        running_total_assigned += monthly_assigned_cuts[month]
+        normalized_value = (running_total_assigned / norm_denominator_internal) * 100
+        normalized_value = min(100, max(0, int(normalized_value)))
+        assigned_cumulatives_college.append(int(normalized_value))
+    
+    internal_cumulative_data = []
+    running_total_committed = Decimal('0')
+    for month in range(1, 13):
+        running_total_committed += internal_monthly_commitments.get(month, Decimal('0'))
+        normalized_value = (running_total_committed / norm_denominator_internal) * 100
+        normalized_value = min(100, max(0, int(normalized_value)))
+        internal_cumulative_data.append(int(normalized_value))
+        
+    college_committed_data_json = json.dumps(internal_cumulative_data)
+
+    project_external_monthly = projects_current_year.filter(
+        external_budget__gt=0
+    ).annotate(
+        month=TruncMonth('start_date')
+    ).values('month').annotate(
+        monthly_commitment=Sum('external_budget')
+    ).order_by('month')
+    
+    external_monthly_commitments = {i: Decimal('0') for i in range(1, 13)}
+    for item in project_external_monthly:
+        external_monthly_commitments[item['month'].month] += item['monthly_commitment']
+
+    external_cumulative_data = []
+    running_total_external = Decimal('0')
+
+    for month in range(1, 13):
+        running_total_external += external_monthly_commitments.get(month, Decimal('0'))
+        normalized_value = (running_total_external / norm_denominator_external) * 100
+        normalized_value = min(100, max(0, int(normalized_value)))
+        external_cumulative_data.append(int(normalized_value))
+
+    college_external_data_json = json.dumps(external_cumulative_data)
+
+    remaining_cumulative_data = []
+    running_total_assigned_temp = Decimal('0')
+    running_total_committed_temp = Decimal('0')
+
+    for month in range(1, 13):
+        running_total_assigned_temp += monthly_assigned_cuts.get(month, Decimal('0'))
+        running_total_committed_temp += internal_monthly_commitments.get(month, Decimal('0'))
+        
+        uncommitted_value = running_total_assigned_temp - running_total_committed_temp
+        
+        normalized_value = (uncommitted_value / norm_denominator_internal) * 100
+        normalized_value = int(normalized_value)
+        remaining_cumulative_data.append(normalized_value)
+
+    college_remaining_data_json = json.dumps(remaining_cumulative_data)
+
+    # Calculate total spent (used budget) from projects
+    total_spent = college_budget.total_spent_by_projects
+    
+    # Calculate percentages
+    percent_used = (total_spent / total_assigned * 100) if total_assigned > 0 else Decimal('0')
+    percent_unused = (100 - percent_used) if total_assigned > 0 else Decimal('0')
+    percent_committed = (total_committed_internal / total_assigned * 100) if total_assigned > 0 else Decimal('0')
+    
+    # Calculate final remaining (after spending)
+    final_remaining = college_budget.final_remaining
+
+    # Get projects that have actually spent budget (used_budget > 0)
+    # Since used_budget is now calculated directly from expenses, this will include all projects with expenses
+    projects_with_spending = []
+    for p in project_list:
+        # Include projects with any expenses (used_budget > 0)
+        if p['used_budget'] and p['used_budget'] > Decimal('0'):
+            usage_percent = (p['used_budget'] / p['internal_funding_committed'] * 100) if p['internal_funding_committed'] > 0 else Decimal('0')
+            # Determine color based on usage percentage
+            if usage_percent > 100:
+                usage_color = '#dc2626'  # Red for over budget
+            elif usage_percent > 80:
+                usage_color = '#f59e0b'  # Orange for high usage
+            else:
+                usage_color = '#10b981'  # Green for normal usage
+            
+            projects_with_spending.append({
+                'id': p['id'],
+                'title': p['title'],
+                'status': p['status'],
+                'used_budget': p['used_budget'],
+                'internal_funding_committed': p['internal_funding_committed'],
+                'remaining_budget': p['remaining_budget'],
+                'usage_percent': usage_percent,
+                'usage_color': usage_color,
+            })
+    # Sort by used_budget descending (highest spending first)
+    projects_with_spending.sort(key=lambda x: x['used_budget'], reverse=True)
+
+
+    return {
+        'is_setup': True,
+        'college_budget': college_budget,
+        'college_name': user_college.name,
+        'total_assigned_original_cut': total_assigned,
+        'total_committed_to_projects': total_committed_internal,
+        'total_external_to_projects': total_committed_external,
+        'total_spent_by_projects': total_spent,
+        'uncommitted_remaining': uncommitted_remaining,
+        'final_remaining': final_remaining,
+        'percent_used': percent_used,
+        'percent_unused': percent_unused,
+        'percent_committed': percent_committed,
+        'dashboard_data': project_list,
+        'projects_with_spending': projects_with_spending,
+        
+        'college_committed_data_json': college_committed_data_json, 
+        'college_external_data_json': college_external_data_json,
+        'college_remaining_data_json': college_remaining_data_json,
+        'total_assigned_original_cut_norm': json.dumps(assigned_cumulatives_college)
+    }
+
+def _get_faculty_dashboard_data(user):
+    user_projects = Project.objects.filter(
+        Q(project_leader=user) | Q(providers=user)
+    ).filter(
+        Q(internal_budget__gt=0) | Q(external_budget__gt=0)
+    ).distinct().select_related('project_leader__college').order_by('title')
+
+    project_data = []
+    total_internal = Decimal('0')
+    total_external = Decimal('0')
+
+    for project in user_projects:
+        assigned = project.internal_budget or Decimal('0')
+        external = project.external_budget or Decimal('0')
+
+        total_internal += assigned
+        total_external += external
+
+        project_data.append({
+            'id': project.id,
+            'title': project.title,
+            'status': project.get_status_display(),
+            'internal_funding': assigned,
+            'external_funding': external,
+        })
+    
+    current_year = get_current_fiscal_year()
+    year_int = int(current_year)
+    total_assigned = total_internal + total_external
+
+    norm_denom_internal = total_internal if total_internal > 0 else Decimal('1') 
+    norm_denom_external = total_external if total_external > 0 else Decimal('1') 
+    norm_denom_total = total_assigned if total_assigned > 0 else Decimal('1')
+
+    project_internal_monthly = Project.objects.filter(
+        Q(project_leader=user) | Q(providers=user),
+        internal_budget__gt=0,
+        start_date__year=year_int
+    ).annotate(
+        month=TruncMonth('start_date')
+    ).values('month').annotate(monthly_commitment=Sum('internal_budget')).order_by('month')
+
+    internal_monthly_commitments = {i: Decimal('0') for i in range(1, 13)}
+    for item in project_internal_monthly:
+        month_num = item['month'].month
+        internal_monthly_commitments[month_num] += item['monthly_commitment']
+
+    internal_cumulative_data = []
+    running_total_internal = Decimal('0')
+    for month in range(1, 13):
+        running_total_internal += internal_monthly_commitments[month]
+        normalized_value = (running_total_internal / norm_denom_internal) * 100
+        normalized_value = min(100, max(0, int(normalized_value)))
+        internal_cumulative_data.append(int(normalized_value))
+        
+    faculty_internal_data_json = json.dumps(internal_cumulative_data)
+    
+    project_external_monthly = Project.objects.filter(
+        Q(project_leader=user) | Q(providers=user),
+        external_budget__gt=0,
+        start_date__year=year_int
+    ).annotate(
+        month=TruncMonth('start_date')
+    ).values('month').annotate(monthly_commitment=Sum('external_budget')).order_by('month')
+
+    external_monthly_commitments = {i: Decimal('0') for i in range(1, 13)}
+    for item in project_external_monthly:
+        month_num = item['month'].month
+        external_monthly_commitments[month_num] += item['monthly_commitment']
+
+    external_cumulative_data = []
+    running_total_external = Decimal('0')
+    for month in range(1, 13):
+        running_total_external += external_monthly_commitments[month]
+        normalized_value = (running_total_external / norm_denom_external) * 100
+        normalized_value = min(100, max(0, int(normalized_value)))
+        external_cumulative_data.append(int(normalized_value))
+        
+    faculty_external_data_json = json.dumps(external_cumulative_data)
+
+    total_cumulative_data = []
+    running_total_combined = Decimal('0')
+    for month in range(1, 13):
+        combined_monthly = internal_monthly_commitments[month] + external_monthly_commitments[month]
+        running_total_combined += combined_monthly
+        normalized_value = (running_total_combined / norm_denom_total) * 100
+        normalized_value = min(100, max(0, int(normalized_value)))
+        total_cumulative_data.append(int(normalized_value))
+
+    faculty_total_data_json = json.dumps(total_cumulative_data)
+
+    return {
+        "is_setup": True,
+        "dashboard_data": project_data,
+        "total_internal": total_internal,
+        "total_external": total_external,
+        "total_assigned": total_assigned,
+        "faculty_internal_data_json": faculty_internal_data_json,
+        "faculty_external_data_json": faculty_external_data_json,
+        "faculty_total_data_json": faculty_total_data_json,
+    }
+
+def _get_edit_page_data(user, fiscal_year):
+    user_role = getattr(user, 'role', None)
+    context = {}
+
+    if user_role in ["VP", "DIRECTOR", "UESO"]:
+        admin_data = _get_admin_dashboard_data(fiscal_year)
+        context['colleges_data'] = admin_data['dashboard_data']
+        context['allocation_map'] = json.dumps({
+            item['college_id']: str(item['original_cut']) if item['original_cut'] > Decimal('0') else ''
+            for item in admin_data['dashboard_data']
+        })
+
+    college_roles = ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]
+    if user_role in college_roles:
+        college_data = _get_college_dashboard_data(user, fiscal_year)
+        context.update(college_data)
+        
+    faculty_roles = ["FACULTY", "IMPLEMENTER"]
+    if user_role in faculty_roles:
+        faculty_data = _get_faculty_dashboard_data(user) 
+        context.update(faculty_data)
+
+    return context
+
+
+@transaction.atomic
+def _set_annual_budget_pool(user, fiscal_year, total_available):
+
+    if total_available < Decimal('0.00'):
+        raise ValueError("Annual budget pool cannot be negative.")
+
+    pool, created = BudgetPool.objects.update_or_create(
+        fiscal_year=fiscal_year,
+        defaults={'total_available': total_available}
+    )
+    BudgetHistory.objects.create(
+        action='ALLOCATED' if created else 'ADJUSTED',
+        amount=pool.total_available,
+        description=f'Annual Budget Pool initialized/set for {fiscal_year}: ₱{total_available:,.2f}',
+        user=user
+    )
+    return pool
+
+
+@transaction.atomic
+def _update_project_internal_budget(user, project_id, new_internal_budget):
+
+    if new_internal_budget < Decimal('0.00'):
+        raise ValueError("Internal budget cannot be negative.")
+
+    project = Project.objects.select_related('project_leader__college').get(id=project_id)
+
+    if not project.project_leader or not project.project_leader.college:
+        raise PermissionError("Project leader or their college is required for internal budget assignment.")
+
+    if project.project_leader.college != getattr(user, 'college', None):
+        raise PermissionError("You can only assign budgets to projects from your own college.")
+
+    fiscal_year = get_current_fiscal_year()
+    try:
+        college_budget = CollegeBudget.objects.get(
+            college=project.project_leader.college,
+            fiscal_year=fiscal_year,
+        )
+    except CollegeBudget.DoesNotExist:
+        raise PermissionError(f"No budget found for {project.project_leader.college.name} for {fiscal_year}. Please contact the administrator.")
+
+    old_budget = project.internal_budget or Decimal('0')
+    commitment_delta = new_internal_budget - old_budget
+
+    if commitment_delta == 0:
+        return project
+
+    current_committed_total = Project.objects.filter(
+        project_leader__college=college_budget.college,
+        start_date__year=int(fiscal_year)
+    ).exclude(id=project.id).aggregate(
+        total=Coalesce(Sum('internal_budget'), Value(Decimal('0.0')))
+    )['total']
+
+    new_total_commitment = current_committed_total + new_internal_budget
+
+    if new_total_commitment > college_budget.total_assigned:
+        raise ValueError(f"Assignment exceeds remaining college budget. College has ₱{college_budget.total_assigned - current_committed_total:,.2f} remaining.")
+
+    project.internal_budget = new_internal_budget
+    project.save(update_fields=['internal_budget'])
+
+    college_budget.total_committed_to_projects = new_total_commitment
+    college_budget.save(update_fields=['total_committed_to_projects'])
+
+    if old_budget == Decimal('0.00'):
+        action_type = 'ALLOCATED'
+        description_str = f'Project "{project.title}" internal budget allocated: ₱{new_internal_budget:,.2f}.'
+    else:
+        action_type = 'ADJUSTED'
+        description_str = f'Project "{project.title}" internal budget adjusted: ₱{old_budget:,.2f} → ₱{new_internal_budget:,.2f}.'
+
+    BudgetHistory.objects.create(
+        college_budget=college_budget,
+        action=action_type,
+        amount=commitment_delta,
+        description=f'Project "{project.title}" internal budget adjusted: ₱{old_budget:,.2f} → ₱{new_internal_budget:,.2f}. (Funded by {college_budget.college.name})',
+        user=user
+    )
+    return project
+
+
+@role_required(["VP", "DIRECTOR", "UESO", "FACULTY", "IMPLEMENTER"], require_confirmed=True)
+def faculty_project_budget_view(request, pk):
+    base_template = get_templates(request)
+    project = get_object_or_404(Project, pk=pk)
+
+    if request.method == 'POST':
+        title = request.POST.get('reason') or request.POST.get('title')
+        notes = request.POST.get('notes')
+        amount_raw = request.POST.get('amount')
+        receipt = request.FILES.get('receipt')
+        event_id = request.POST.get('event_id', '').strip()
+        
+        try:
+            amount_val = Decimal(str(amount_raw))
+        except Exception:
+            amount_val = Decimal('0')
+        
+        # Get event if provided
+        event = None
+        if event_id:
+            try:
+                from shared.projects.models import ProjectEvent
+                event = project.events.get(pk=event_id)
+            except ProjectEvent.DoesNotExist:
+                pass
+        
+        if title and amount_val > 0:
+            try:
+                ProjectExpense.objects.create(
+                    project=project,
+                    event=event,
+                    title=title,
+                    reason=notes,
+                    amount=amount_val,
+                    receipt=receipt,
+                    created_by=request.user,
+                )
+                try:
+                    BudgetHistory.objects.create(
+                        action='SPENT',
+                        amount=amount_val,
+                        description=f'Expense recorded for {project.title}: ₱{amount_val:,.2f} - {title}',
+                        user=request.user
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            return redirect('faculty_project_budget', pk=project.id)
+
+    expenses_qs = ProjectExpense.objects.filter(project=project).order_by('-date_incurred', '-created_at')
+
+    total_budget = (project.internal_budget or Decimal('0')) + (project.external_budget or Decimal('0'))
+    spent_total = expenses_qs.aggregate(s=Sum('amount'))['s'] or Decimal('0')
+    remaining_total = max(Decimal('0'), total_budget - spent_total)
+    percent_remaining = int(round(((remaining_total / total_budget) * 100))) if total_budget else 0
+
+    chart_data = {
+        'labels': ['Remaining', 'Spent'],
+        'data': [float(remaining_total), float(spent_total)],
+        'colors': ['#16a34a', '#d1d5db']
+    }
+
+    return render(request, 'budget/faculty_project_budget.html', {
+        'base_template': base_template,
+        'project': project,
+        'expenses': expenses_qs,
+        'budget_total': total_budget,
+        'spent_total': spent_total,
+        'remaining_total': remaining_total,
+        'percent_remaining': percent_remaining,
+        'chart_data_json': json.dumps(chart_data),
+    })
 
 def get_templates(request):
     user_role = getattr(request.user, 'role', None)
@@ -16,40 +759,592 @@ def get_templates(request):
         base_template = "base_public.html"
     return base_template
 
+@role_required(["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR", "FACULTY", "IMPLEMENTER"], require_confirmed=True)
+def budget_view(request):
 
-################################################################################################################################################################
+    current_year = get_current_fiscal_year()
+    user_role = getattr(request.user, 'role', None)
+
+    if user_role in ["VP", "DIRECTOR", "UESO"]:
+        context = _get_admin_dashboard_data(current_year)
+        # Flag for template and surface returned balances summary for VP/UESO
+        context["is_admin"] = True
+
+        # Returned balances = BudgetHistory entries created when unspent project funds
+        # are returned to UESO (description contains 'Returned unspent project budget')
+        returned_qs = BudgetHistory.objects.filter(
+            description__icontains="Returned unspent project budget"
+        ).order_by('-timestamp')[:10]
+
+        # Attach related project (parsed from description "(ID X)") so rows can link to project profile
+        import re
+
+        enriched = []
+        for entry in returned_qs:
+            project = None
+            project_id = None
+            desc = entry.description or ""
+            m = re.search(r"\(ID\s+(\d+)\)", desc)
+            if m:
+                try:
+                    project_id = int(m.group(1))
+                    project = Project.objects.get(id=project_id)
+                except (ValueError, Project.DoesNotExist):
+                    project = None
+            enriched.append(
+                {
+                    "entry": entry,
+                    "project": project,
+                    "project_id": project_id,
+                }
+            )
+        context["returned_balances"] = enriched
+    elif user_role in ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
+        context = _get_college_dashboard_data(request.user, current_year)
+    elif user_role in ["FACULTY", "IMPLEMENTER"]:
+        context = _get_faculty_dashboard_data(request.user)
+        
+        college_chart_data = _get_college_dashboard_data(request.user, current_year)
+        if college_chart_data.get('is_setup'):
+            context['college_remaining_data_json'] = college_chart_data.get('college_remaining_data_json', '[]')
+            context['has_college_budget'] = True
+        else:
+            context['college_remaining_data_json'] = '[]'
+            context['has_college_budget'] = False
+            context['college_name'] = college_chart_data.get('college_name')
+            
+        user = request.user
+        user_projects = Project.objects.filter(
+            Q(project_leader=user) | Q(providers=user)
+        ).distinct()
+
+        search_query = request.GET.get('search', '').strip()
+        if search_query:
+            user_projects = user_projects.filter(title__icontains=search_query)
+
+        sort_by = request.GET.get('sort_by', 'last_updated')
+        order = request.GET.get('order', 'desc')
+        
+        if sort_by == 'budget_percentage':
+            projects_with_percent = []
+            for p in user_projects:
+                total_budget = (p.internal_budget or 0) + (p.external_budget or 0)
+                spent_total = p.used_budget or 0
+                remaining = float(total_budget) - float(spent_total)
+                percent_remaining = 0
+                if total_budget:
+                    try:
+                        percent_remaining = (remaining / float(total_budget)) * 100
+                    except Exception:
+                        percent_remaining = 0
+                projects_with_percent.append((p, percent_remaining))
+            
+            projects_with_percent.sort(key=lambda x: x[1], reverse=(order == 'desc'))
+            user_projects = [p[0] for p in projects_with_percent]
+        else:
+            sort_field_map = {
+                'title': 'title',
+                'last_updated': 'updated_at',
+                'budget_remaining': 'internal_budget',
+            }
+            
+            sort_field = sort_field_map.get(sort_by, 'updated_at')
+            
+            if order == 'asc':
+                user_projects = user_projects.order_by(sort_field)
+            else:
+                user_projects = user_projects.order_by(f'-{sort_field}')
+
+        projects_overview = []
+        for p in user_projects:
+            total_budget = (p.internal_budget or 0) + (p.external_budget or 0)
+            spent_total = p.used_budget or 0
+            remaining = float(total_budget) - float(spent_total)
+            percent_remaining = 0
+            if total_budget:
+                try:
+                    percent_remaining = int(round((remaining / float(total_budget)) * 100))
+                except Exception:
+                    percent_remaining = 0
+            projects_overview.append({
+                'id': p.id,
+                'title': p.title,
+                'last_updated': p.updated_at,
+                'percent_remaining': max(0, min(100, percent_remaining)),
+                'providers': [
+                    {
+                        'name': u.get_full_name() or u.username,
+                        'avatar': getattr(u, 'profile_picture_or_initial', '')
+                    } for u in list(p.providers.all())[:3]
+                ]
+            })
+        context['projects_overview'] = projects_overview
+
+        recent_expenses = ProjectExpense.objects.filter(project__in=user_projects).select_related('project').order_by('-created_at')[:10]
+        context['recent_expenses'] = recent_expenses
+
+        current_budget_total = 0
+        percent_less_mean = 0
+        try:
+            user_college = getattr(user, 'college', None)
+            fiscal_year = get_current_fiscal_year()
+            if user_college:
+                cb = CollegeBudget.objects.filter(college=user_college, fiscal_year=fiscal_year, status='ACTIVE').first()
+                if cb:
+                    committed_internal = getattr(cb, 'total_committed_to_projects', None)
+                    if committed_internal is None:
+                        committed_internal = Project.objects.filter(
+                            project_leader__college=user_college,
+                            start_date__year=int(fiscal_year)
+                        ).aggregate(s=Coalesce(Sum('internal_budget'), Value(Decimal('0.0'))))['s']
+                    committed_internal = committed_internal or Decimal('0')
+                    total_assigned = cb.total_assigned or Decimal('0')
+                    remaining = max(Decimal('0'), total_assigned - committed_internal)
+                    current_budget_total = remaining
+                    context['chart_data_json'] = json.dumps({
+                        'labels': ['Remaining', 'Committed'],
+                        'data': [float(remaining), float(committed_internal)],
+                        'colors': ['#16a34a', '#d1d5db']
+                    })
+                    context['historical_data_json'] = json.dumps({ 'labels': [], 'data': [], 'color': '#0f3ea3' })
+                    context['has_college_budget'] = True
+                else:
+                    context['has_college_budget'] = False
+        except Exception:
+            context['has_college_budget'] = False
+        context['current_budget_total'] = current_budget_total
+        context['percent_less_mean'] = percent_less_mean
+    else:
+        context = {"is_setup": False, "error": "Invalid User Role"}
+
+    # Latest history entries for sidebar/timeline
+    context["latest_history"] = BudgetHistory.objects.all().order_by('-timestamp')[:5]
+
+    # External projects snapshot (for sidebar/summary)
+    external_projects_qs = Project.objects.filter(
+        external_budget__gt=0,
+        start_date__year=int(current_year)
+    )
+
+    if user_role in ["FACULTY", "IMPLEMENTER"]:
+        external_projects_qs = external_projects_qs.filter(
+            Q(project_leader=request.user) | Q(providers=request.user)
+        ).distinct()
+
+    context["latest_external_projects"] = external_projects_qs.order_by('-external_budget')[:5]
+
+    # Common context flags used by templates/JS
+    context["base_template"] = get_templates(request)
+    context["title"] = f"Budget Dashboard ({current_year})"
+    context["user_role"] = user_role
+    context["is_admin"] = user_role in ["VP", "DIRECTOR", "UESO"] if user_role else False
+    context["is_college_admin"] = user_role in ["PROGRAM_HEAD", "DEAN", "COORDINATOR"] if user_role else False
+    context["is_faculty_or_implementer"] = user_role in ["FACULTY", "IMPLEMENTER"] if user_role else False
+    context["is_admin_json"] = json.dumps(user_role in ["VP", "DIRECTOR", "UESO"] if user_role else False)
+    context["is_college_admin_json"] = json.dumps(user_role in ["PROGRAM_HEAD", "DEAN", "COORDINATOR"] if user_role else False)
+
+    # Ensure projects_with_spending is always defined
+    if 'projects_with_spending' not in context:
+        context['projects_with_spending'] = []
+
+    # Handle cases where annual pool / college budget is not yet set up
+    if not context.get('is_setup', True):
+        if context.get('user_role') in ["VP", "DIRECTOR", "UESO"]:
+            messages.info(request, "Annual Budget Pool not initialized. Please set it up.")
+            return redirect('budget_setup')
+
+        college_context = context.get('college_name')
+        if college_context:
+            messages.info(request, f"Budget for {college_context} not yet allocated for {current_year}.")
+            return render(request, 'budget/no_budget_setup.html', context)
+
+        return render(request, 'budget/no_budget_setup.html', context)
+
+    # Finally render role-specific dashboard
+    if user_role in ["FACULTY", "IMPLEMENTER"]:
+        if not context.get('has_college_budget', False):
+            context["base_template"] = get_templates(request)
+            context["title"] = "No College Budget"
+            return render(request, 'budget/no_budget_setup.html', context)
+        return render(request, 'budget/faculty_budget.html', context)
+    elif user_role in ["VP", "DIRECTOR", "UESO"]:
+        return render(request, 'budget/budget.html', context)
+    elif user_role in ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
+        # If college has no budget, show friendly message
+        if not context.get('has_college_budget', False):
+            context["base_template"] = get_templates(request)
+            context["title"] = "No College Budget"
+            return render(request, 'budget/no_budget_setup.html', context)
+        return render(request, 'budget/budget.html', context)
+    else:
+        # Fallback for any unexpected role - show error page
+        return render(request, 'budget/no_budget_setup.html', {
+            "base_template": get_templates(request),
+            "title": "Access Denied",
+            "error": "Invalid user role for budget dashboard access."
+        })
 
 
-@role_required(["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR", "FACULTY", "IMPLEMENTER"])
-def budget_dispatcher(request):
-    INTERNAL_ROLES, INTERNAL_WITH_COLLEGE_ROLES, FACULTY_ROLES = get_role_constants()
+@role_required(["VP", "DIRECTOR", "UESO"], require_confirmed=True)
+def budget_reconciliation_detail(request, project_id: int):
+    """
+    Return a JSON payload describing how a returned project balance was computed,
+    for VP/UESO budget reconciliation modal.
+    """
+    project = get_object_or_404(Project, id=project_id)
+
+    # Identity
+    leader = getattr(project.project_leader, "get_full_name", None)
+    if callable(leader):
+        leader_name = project.project_leader.get_full_name() or project.project_leader.username
+    else:
+        leader_name = getattr(project.project_leader, "username", "") or "N/A"
+
+    # Financial math
+    internal = project.internal_budget or Decimal("0")
+    external = project.external_budget or Decimal("0")
+    total_budget = internal + external
+
+    # Use project.used_budget as primary source (this is the authoritative field)
+    # Fall back to aggregated expenses only if used_budget is not set
+    project_used_budget = project.used_budget or Decimal("0")
+    
+    # Also calculate from expenses for transparency/comparison
+    expenses_qs = ProjectExpense.objects.filter(project=project)
+    expenses_total = expenses_qs.aggregate(
+        total=Coalesce(Sum("amount"), Value(Decimal("0.0")), output_field=DecimalField())
+    )["total"] or Decimal("0")
+    
+    # Prefer used_budget if it's set and > 0, otherwise use expenses total
+    if project_used_budget > Decimal("0"):
+        total_spent = project_used_budget
+    else:
+        total_spent = expenses_total
+
+    unutilized = max(Decimal("0"), total_budget - total_spent)
+    utilization_rate = (total_spent / total_budget * 100) if total_budget > 0 else Decimal("0")
+
+    # Reversion logic / budget history entry (if any)
+    marker = f"(ID {project.id})"
+    history_entry = (
+        BudgetHistory.objects.filter(description__icontains="Returned unspent project budget")
+        .filter(description__icontains=marker)
+        .order_by("-timestamp")
+        .first()
+    )
+
+    if history_entry:
+        reversion = {
+            "reversion_type": "Automatic System Reversion",
+            "source_fund": "UESO Annual Budget Pool",
+            "destination": "UESO Realignment Pool",
+            "reason": "Project Completion - Remaining balance swept to UESO.",
+            "college": history_entry.college_budget.college.name
+            if history_entry.college_budget and history_entry.college_budget.college
+            else "N/A",
+            "triggered_by": getattr(history_entry.user, "get_full_name", lambda: None)() or "System",
+            "timestamp": history_entry.timestamp,
+            "returned_amount": history_entry.amount,
+        }
+    else:
+        reversion = {
+            "reversion_type": "Automatic System Reversion",
+            "source_fund": "UESO Annual Budget Pool",
+            "destination": "UESO Realignment Pool",
+            "reason": "Project Completion - Remaining balance swept to UESO.",
+            "college": "N/A",
+            "triggered_by": "System",
+            "timestamp": None,
+            "returned_amount": unutilized,
+        }
+
+    # Simple expense summary (top categories by title)
+    expenses = list(
+        expenses_qs.order_by("-amount")  # type: ignore[attr-defined]
+    )  # safe because amount is defined on ProjectExpense
+
+    top_expenses = []
+    for exp in expenses[:5]:
+        top_expenses.append(
+            {
+                "title": exp.title,
+                "amount": exp.amount,
+                "reason": exp.reason,
+                "date_incurred": exp.date_incurred,
+            }
+        )
+
+    payload = {
+        "project": {
+            "id": project.id,
+            "title": project.title,
+            "status": project.get_status_display(),
+            "leader": leader_name,
+            "start_date": project.start_date,
+            "end_date": project.estimated_end_date,
+        },
+        "financials": {
+            "total_budget": total_budget,
+            "total_spent": total_spent,
+            "unutilized_balance": unutilized,
+            "utilization_rate": utilization_rate,
+        },
+        "reversion": reversion,
+        "expenses": top_expenses,
+    }
+
+    return JsonResponse(payload, safe=False)
+
+
+@role_required(["VP", "DIRECTOR", "UESO"], require_confirmed=True)
+def edit_budget_view(request):
+
+    current_year = get_current_fiscal_year()
+    context = _get_edit_page_data(request.user, current_year)
+    context["base_template"] = get_templates(request)
+    context["title"] = "Edit Budget"
 
     user_role = getattr(request.user, 'role', None)
-    if user_role in INTERNAL_ROLES:
-        return budget_internal_view(request)
-    elif user_role in INTERNAL_WITH_COLLEGE_ROLES:
-        return budget_internal_college_view(request)
-    elif user_role in FACULTY_ROLES:
-        return budget_faculty_view(request)
+    context["user_role"] = user_role
+    context["is_college_admin"] = user_role in ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]
 
 
-################################################################################################################################################################
+    college_roles = ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]
+    if user_role in college_roles:
+        pass
+
+    if user_role in ["VP", "DIRECTOR", "UESO"]:
+        if request.method == "POST" and 'assign_college_budget' in request.POST:
+
+            try:
+                total_proposed_allocation = Decimal('0.00')
+                allocations_to_process = []
+
+                current_pool = BudgetPool.objects.filter(fiscal_year=current_year).first()
+                if not current_pool:
+                    messages.error(request, "Annual Budget Pool is not set. Cannot make allocations.")
+                    return redirect('budget_edit')
+
+                for key, value in request.POST.items():
+                    if key.startswith('college_') and value:
+                        try:
+                            amount = Decimal(str(value).replace(',', '').strip())
+
+                            if amount < Decimal('0.00'):
+                                raise ValueError(f"Negative value (₱{amount:,.2f}) not allowed.")
+
+                            total_proposed_allocation += amount
+                            allocations_to_process.append({'key': key, 'amount': amount})
+
+                        except Exception as e:
+                            messages.error(request, f"Invalid value detected for {key}: {e}")
+                            return redirect('budget_edit')
+
+                if total_proposed_allocation > current_pool.total_available:
+                    messages.error(request, f"Total proposed allocation (₱{total_proposed_allocation:,.2f}) exceeds the annual pool (₱{current_pool.total_available:,.2f}).")
+                    return redirect('budget_edit')
+
+                with transaction.atomic():
+                    colleges_updated = 0
+                    for item in allocations_to_process:
+                        key = item['key']
+                        amount = item['amount']
+
+                        college_id = key.replace('college_', '')
+                        college = College.objects.get(id=college_id)
+
+                        allocation, created = CollegeBudget.objects.get_or_create(
+                            college=college,
+                            fiscal_year=current_year,
+                            defaults={'total_assigned': amount, 'assigned_by': request.user, 'status': 'ACTIVE'}
+                        )
+
+                        committed_amount = Project.objects.filter(
+                            project_leader__college=college,
+                            start_date__year=int(current_year)
+                        ).aggregate(
+                            total=Coalesce(Sum('internal_budget'), Value(Decimal('0.0')))
+                        )['total']
+
+                        if amount < committed_amount:
+                            raise Exception(f"Cannot set {college.name} budget to ₱{amount:,.2f}. It already has ₱{committed_amount:,.2f} committed to projects.")
+
+                        if not created and allocation.total_assigned != amount:
+                            previous_assigned = allocation.total_assigned
+                            allocation.total_assigned = amount
+                            allocation.assigned_by = request.user
+                            allocation.status = 'ACTIVE'
+                            allocation.save(update_fields=['total_assigned', 'assigned_by', 'status'])
+
+                            BudgetHistory.objects.create(
+                                college_budget=allocation,
+                                action='ADJUSTED',
+                                amount=amount - previous_assigned,
+                                description=f'College cut for {college.name} adjusted: ₱{previous_assigned:,.2f} → ₱{amount:,.2f}',
+                                user=request.user
+                            )
+                        elif created:
+                            BudgetHistory.objects.create(
+                                college_budget=allocation,
+                                action='ALLOCATED',
+                                amount=amount,
+                                description=f'Initial college cut allocated for {college.name}: ₱{amount:,.2f}',
+                                user=request.user
+                            )
+
+                        colleges_updated += 1
+
+                    messages.success(request, f'Successfully updated allocations for {colleges_updated} colleges.')
+                    return redirect('budget_edit')
+
+            except Exception as e:
+                messages.error(request, f'An error occurred: {e}')
+                return redirect('budget_edit')
+    
+    return render(request, 'budget/edit_budget.html', context)
 
 
-def budget_faculty_view(request):
+@role_required(["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"], require_confirmed=True)
+def budget_history_view(request):
+
+    history_queryset = BudgetHistory.objects.select_related(
+        'user', 'college_budget__college', 'external_funding__project'
+    ).order_by('-timestamp')
+
+    if getattr(request.user, 'role', None) in ["PROGRAM_HEAD", "DEAN", "COORDINATOR"]:
+        if user_college := getattr(request.user, 'college', None):
+            history_queryset = history_queryset.filter(college_budget__college=user_college)
+
+    paginator = Paginator(history_queryset, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
     context = {
-        "base_template": get_templates(request),
+        "page_obj": page_obj,
+        "title": "Budget History Audit Log",
+        "base_template": get_templates(request)
     }
-    return render(request, 'budget/faculty_budget.html', context)
+    return render(request, 'budget/history.html', context)
 
-def budget_internal_view(request):
-    context = {
-        "base_template": get_templates(request),
-    }
-    return render(request, 'budget/internal_budget.html', context)
 
-def budget_internal_college_view(request):
+@role_required(["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR", "FACULTY", "IMPLEMENTER"], require_confirmed=True)
+def external_sponsors_view(request):
+
+    current_year = get_current_fiscal_year()
+
+    project_queryset = Project.objects.filter(
+        external_budget__gt=0,
+        start_date__year=int(current_year)
+    ).order_by('-start_date')
+
+    paginator = Paginator(project_queryset, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
     context = {
-        "base_template": get_templates(request),
+        "page_obj": page_obj,
+        "title": "Projects with External Funding",
+        "base_template": get_templates(request)
     }
-    return render(request, 'budget/internal_college_budget.html', context)
+    return render(request, 'budget/external_sponsors.html', context)
+
+
+@role_required(["VP", "DIRECTOR", "UESO"], require_confirmed=True)
+def setup_annual_budget(request):
+
+    current_year = get_current_fiscal_year()
+    current_pool = BudgetPool.objects.filter(fiscal_year=current_year).first()
+
+    if request.method == 'POST':
+        form = AnnualBudgetForm(request.POST)
+        if form.is_valid():
+            try:
+                annual_total = form.cleaned_data['annual_total']
+                if annual_total < Decimal('0.00'):
+                    messages.error(request, "Annual budget cannot be negative.")
+                else:
+                    _set_annual_budget_pool(request.user, current_year, annual_total)
+                    messages.success(request, f'Set annual budget for {current_year} to ₱{annual_total:,.2f}.')
+                    return redirect('budget_dashboard')
+            except Exception as e:
+                messages.error(request, f'Error initializing budget: {e}')
+    else:
+        initial_data = {'fiscal_year': current_year}
+        if current_pool:
+            initial_data['annual_total'] = current_pool.total_available
+            messages.info(request, f"Budget for {current_year} is already set to ₱{current_pool.total_available:,.2f}. You can adjust it here.")
+
+        form = AnnualBudgetForm(initial=initial_data)
+
+    return render(request, 'budget/setup_annual_budget.html', {
+        "base_template": get_templates(request),
+        "form": form,
+        "title": "Set Up Annual Budget",
+        "current_pool": current_pool
+    })
+
+@role_required(["VP", "DIRECTOR", "UESO", "PROGRAM_HEAD", "DEAN", "COORDINATOR"], require_confirmed=True)
+def view_college_projects(request, college_id):
+    current_year = get_current_fiscal_year()
+    college = get_object_or_404(College, id=college_id)
+
+    projects = Project.objects.filter(
+        project_leader__college=college,
+        start_date__year=int(current_year)
+    ).order_by('title')
+    
+    context = {
+        "title": f"Projects Allocated to {college.name} ({current_year})",
+        "college": college,
+        "projects": projects,
+        "base_template": get_templates(request)
+    }
+    
+    return render(request, 'budget/college_projects_list.html', context)
+
+@role_required(["VP", "DIRECTOR", "UESO"], require_confirmed=True)
+def export_budget_data_view(request):
+    fiscal_year = get_current_fiscal_year()
+
+    admin_data = _get_admin_dashboard_data(fiscal_year)
+    college_budget_data = admin_data['dashboard_data']
+
+    external_projects = Project.objects.filter(
+        external_budget__gt=0,
+        start_date__year=int(fiscal_year)
+    ).select_related('project_leader__college').prefetch_related('externalfunding_set').order_by('project_leader__college__name', 'title')
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="budget_export_{fiscal_year}.csv"'
+
+    writer = csv.writer(response)
+
+    writer.writerow(['--- COLLEGE BUDGET ALLOCATIONS ---'])
+    writer.writerow(['College', 'Initial Budget (Original Cut)', 'Internal Budget (Committed)', 'External Budget (Committed)', 'Remaining (Uncommitted)'])
+
+    for item in college_budget_data:
+        writer.writerow([
+            item['college_name'],
+            f"₱{item['original_cut']:,.2f}",
+            f"₱{item['committed_funding']:,.2f}",
+            f"₱{item['external_funding']:,.2f}",
+            f"₱{item['uncommitted_remaining']:,.2f}"
+        ])
+
+    writer.writerow([])
+    writer.writerow([])
+
+    writer.writerow(['--- PROJECTS WITH EXTERNAL FUNDING ---'])
+    writer.writerow(['Project Title', 'College', 'External Budget', 'Sponsor Name'])
+
+    for project in external_projects:
+        sponsor_name = 'N/A'
+        if external_funding := project.externalfunding_set.first():
+            sponsor_name = external_funding.sponsor_name
+
+        writer.writerow([
+            project.title,
+            project.project_leader.college.name if project.project_leader and project.project_leader.college else 'N/A',
+            f"₱{project.external_budget:,.2f}",
+            sponsor_name
+        ])
+
+    return response

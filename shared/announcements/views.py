@@ -10,18 +10,17 @@ from .models import Announcement
 from django.db.models import Q, Case, When, DateTimeField
 from urllib.parse import urlencode
 import pytz
+from django.views.decorators.http import require_POST
 
 
 # Role-Based Dispatch View
 def announcement_dispatch_view(request):
     user = request.user
     if not user.is_authenticated:
-        print("User is not authenticated")
         return user_announcement_view(request)
     admin_roles = {"VP", "DIRECTOR", "UESO"}
     superuser_roles = {"PROGRAM_HEAD", "DEAN", "COORDINATOR"}
     role = getattr(user, 'role', None)
-    print(role)
     if role in admin_roles:
         return announcement_admin_view(request)
     elif role in superuser_roles:
@@ -33,18 +32,29 @@ def announcement_dispatch_view(request):
 # Announcement Details Dispatch View
 def announcement_details_dispatch_view(request, id):
     user = request.user
-    announcement = get_object_or_404(Announcement, id=id)
-    if not user.is_authenticated:
-        return render(request, 'announcements/user_announcement_details.html', {'announcement': announcement})
     admin_roles = {"VP", "DIRECTOR", "UESO"}
     superuser_roles = {"PROGRAM_HEAD", "DEAN", "COORDINATOR"}
     role = getattr(user, 'role', None)
+
+    is_privileged = user.is_authenticated and (role in admin_roles or role in superuser_roles)
+    if is_privileged:
+        announcement = get_object_or_404(
+            Announcement.objects.select_related('published_by', 'edited_by', 'scheduled_by'),
+            id=id,
+        )
+    else:
+        announcement = get_object_or_404(
+            Announcement.objects.select_related('published_by'),
+            id=id,
+            published_at__isnull=False,
+            archived=False,
+        )
+
     if role in admin_roles:
         return render(request, 'announcements/admin_announcement_details.html', {'announcement': announcement})
-    elif role in superuser_roles:
+    if role in superuser_roles:
         return render(request, 'announcements/superuser_announcement_details.html', {'announcement': announcement})
-    else:
-        return render(request, 'announcements/user_announcement_details.html', {'announcement': announcement})
+    return render(request, 'announcements/user_announcement_details.html', {'announcement': announcement})
 
 
 # User Announcement View
@@ -52,14 +62,19 @@ def user_announcement_view(request):
     search_query = request.GET.get('search', '').strip()
     sort_by = request.GET.get('sort')
     sort_order = request.GET.get('order')
-    filter_date = request.GET.get('date', '')
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
 
     if not sort_by:
         sort_by = 'date'
     if not sort_order:
         sort_order = 'desc'
 
-    announcements_qs = Announcement.objects.filter(published_at__isnull=False, archived=False)
+    # Optimize with select_related
+    announcements_qs = Announcement.objects.filter(
+        published_at__isnull=False, 
+        archived=False
+    ).select_related('published_by')
 
     if search_query:
         announcements_qs = announcements_qs.filter(
@@ -77,31 +92,15 @@ def user_announcement_view(request):
     else:
         announcements_qs = announcements_qs.order_by('-published_at')
 
-    if filter_date:
-        try:
-            from datetime import datetime
-            user_date = datetime.strptime(filter_date, "%Y-%m-%d").date()
-            try:
-                tz = pytz.timezone("Asia/Manila")
-            except ImportError:
-                from django.utils import timezone as djtz
-                tz = djtz.get_fixed_timezone(8 * 60)  # UTC+8 for Manila
-        except Exception:
-            user_date = None
-            tz = None
-        if user_date and tz:
-            filtered_ids = []
-            for ann in announcements_qs:
-                dt = None
-                if ann.published_at:
-                    dt = ann.published_at.astimezone(tz)
-                if dt and dt.date() == user_date:
-                    filtered_ids.append(ann.id)
-            announcements_qs = announcements_qs.filter(id__in=filtered_ids)
+    if date_from:
+        announcements_qs = announcements_qs.filter(published_at__date__gte=date_from)
+    if date_to:
+        announcements_qs = announcements_qs.filter(published_at__date__lte=date_to)
 
     paginator = Paginator(announcements_qs, 3)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
+
 
     query_params = {}
     if search_query:
@@ -110,8 +109,10 @@ def user_announcement_view(request):
         query_params['sort'] = sort_by
     if sort_order and sort_order != 'desc':
         query_params['order'] = sort_order
-    if filter_date and filter_date.strip():
-        query_params['date'] = filter_date
+    if date_from and date_from.strip():
+        query_params['date_from'] = date_from
+    if date_to and date_to.strip():
+        query_params['date_to'] = date_to
     querystring = urlencode(query_params)
 
     current = page_obj.number
@@ -132,25 +133,32 @@ def user_announcement_view(request):
         'search_query': search_query,
         'sort_by': sort_by,
         'sort_order': sort_order,
-        'filter_date': filter_date,
+        'date_from': date_from,
+        'date_to': date_to,
         'querystring': querystring,
         "page_range": page_range,
     })
 
 
 # SuperUser Announcement View
-@role_required(allowed_roles=["PROGRAM_HEAD", "DEAN", "COORDINATOR"])
+@role_required(allowed_roles=["PROGRAM_HEAD", "DEAN", "COORDINATOR"], require_confirmed=True)
 def announcement_superuser_view(request):
     search_query = request.GET.get('search', '').strip()
     sort_by = request.GET.get('sort')
     sort_order = request.GET.get('order')
-    filter_date = request.GET.get('date', '')
+
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
     if not sort_by:
         sort_by = 'date'
     if not sort_order:
         sort_order = 'desc'
 
-    announcements_qs = Announcement.objects.filter(published_at__isnull=False, archived=False)
+    # Optimize with select_related
+    announcements_qs = Announcement.objects.filter(
+        published_at__isnull=False, 
+        archived=False
+    ).select_related('published_by')
 
     if search_query:
         announcements_qs = announcements_qs.filter(
@@ -168,33 +176,17 @@ def announcement_superuser_view(request):
     else:
         announcements_qs = announcements_qs.order_by('-published_at')
 
-    if filter_date:
-        try:
-            from datetime import datetime
-            user_date = datetime.strptime(filter_date, "%Y-%m-%d").date()
-            try:
-                tz = pytz.timezone("Asia/Manila")
-            except ImportError:
-                from django.utils import timezone as djtz
-                tz = djtz.get_fixed_timezone(8 * 60)  # UTC+8 for Manila
-        except Exception:
-            user_date = None
-            tz = None
-        if user_date and tz:
-            filtered_ids = []
-            for ann in announcements_qs:
-                dt = None
-                if ann.published_at:
-                    dt = ann.published_at.astimezone(tz)
-                if dt and dt.date() == user_date:
-                    filtered_ids.append(ann.id)
-            announcements_qs = announcements_qs.filter(id__in=filtered_ids)
+    if date_from:
+        announcements_qs = announcements_qs.filter(published_at__date__gte=date_from)
+    if date_to:
+        announcements_qs = announcements_qs.filter(published_at__date__lte=date_to)
 
 
 
     paginator = Paginator(announcements_qs, 3)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
+
 
     query_params = {}
     if search_query:
@@ -203,8 +195,10 @@ def announcement_superuser_view(request):
         query_params['sort'] = sort_by
     if sort_order and sort_order != 'desc':
         query_params['order'] = sort_order
-    if filter_date and filter_date.strip():
-        query_params['date'] = filter_date
+    if date_from and date_from.strip():
+        query_params['date_from'] = date_from
+    if date_to and date_to.strip():
+        query_params['date_to'] = date_to
     querystring = urlencode(query_params)
 
     current = page_obj.number
@@ -225,14 +219,15 @@ def announcement_superuser_view(request):
         'search_query': search_query,
         'sort_by': sort_by,
         'sort_order': sort_order,
-        'filter_date': filter_date,
+        'date_from': date_from,
+        'date_to': date_to,
         'querystring': querystring,
         "page_range": page_range,
     })
 
 
 # Admin Announcement View
-@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"])
+@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"], require_confirmed=True)
 def announcement_admin_view(request):
     search_query = request.GET.get('search', '').strip()
     sort_by = request.GET.get('sort')
@@ -243,10 +238,12 @@ def announcement_admin_view(request):
         sort_order = 'desc'
     filter_status = request.GET.get('status', '')
     filter_author = request.GET.get('author', '')
-    filter_date = request.GET.get('date', '')
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
     filter_edited = request.GET.get('edited', '')
 
-    announcements_qs = Announcement.objects.all()
+    # Optimize with select_related
+    announcements_qs = Announcement.objects.select_related('published_by', 'edited_by').all()
 
     if search_query:
         announcements_qs = announcements_qs.filter(
@@ -267,29 +264,15 @@ def announcement_admin_view(request):
     if filter_author:
         announcements_qs = announcements_qs.filter(published_by__id=filter_author)
 
-    if filter_date:
-        try:
-            from datetime import datetime
-            user_date = datetime.strptime(filter_date, "%Y-%m-%d").date()
-            try:
-                tz = pytz.timezone("Asia/Manila")
-            except ImportError:
-                from django.utils import timezone as djtz
-                tz = djtz.get_fixed_timezone(8 * 60)  # UTC+8 for Manila
-        except Exception:
-            user_date = None
-            tz = None
-        if user_date and tz:
-            filtered_ids = []
-            for ann in announcements_qs:
-                dt = None
-                if ann.published_at:
-                    dt = ann.published_at.astimezone(tz)
-                elif ann.scheduled_at:
-                    dt = ann.scheduled_at.astimezone(tz)
-                if dt and dt.date() == user_date:
-                    filtered_ids.append(ann.id)
-            announcements_qs = announcements_qs.filter(id__in=filtered_ids)
+    # Filter by published_at or scheduled_at date range
+    if date_from:
+        announcements_qs = announcements_qs.filter(
+            Q(published_at__date__gte=date_from) | Q(scheduled_at__date__gte=date_from)
+        )
+    if date_to:
+        announcements_qs = announcements_qs.filter(
+            Q(published_at__date__lte=date_to) | Q(scheduled_at__date__lte=date_to)
+        )
 
     if filter_edited == 'true':
         announcements_qs = announcements_qs.filter(edited_at__isnull=False)
@@ -343,8 +326,10 @@ def announcement_admin_view(request):
         query_params['status'] = filter_status
     if filter_author and filter_author.strip():
         query_params['author'] = filter_author
-    if filter_date and filter_date.strip():
-        query_params['date'] = filter_date
+    if date_from and date_from.strip():
+        query_params['date_from'] = date_from
+    if date_to and date_to.strip():
+        query_params['date_to'] = date_to
     if filter_edited and filter_edited.strip():
         query_params['edited'] = filter_edited
     querystring = urlencode(query_params)
@@ -369,7 +354,8 @@ def announcement_admin_view(request):
         'sort_order': sort_order,
         'filter_status': filter_status,
         'filter_author': filter_author,
-        'filter_date': filter_date,
+        'date_from': date_from,
+        'date_to': date_to,
         'filter_edited': filter_edited,
         'authors': authors,
         'querystring': querystring,
@@ -378,7 +364,7 @@ def announcement_admin_view(request):
 
 
 # Add Announcement View
-@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"])
+@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"], require_confirmed=True)
 def add_announcement_view(request):
     if request.method == 'POST':
         form = AnnouncementForm(request.POST, request.FILES)
@@ -386,6 +372,8 @@ def add_announcement_view(request):
             announcement = form.save(commit=False)
             scheduled_at = form.cleaned_data.get('scheduled_at')
             now = timezone.now()
+            is_immediate = False
+            
             if scheduled_at and scheduled_at > now:             # If scheduled_at is in the future
                 announcement.is_scheduled = True
                 announcement.published_at = None
@@ -395,20 +383,34 @@ def add_announcement_view(request):
                 announcement.is_scheduled = False
                 announcement.published_at = now
                 announcement.scheduled_at = None
+                is_immediate = True
+                
             announcement.published_by = request.user
             announcement.save()
-            return render(request, 'announcements/add_announcement.html', {'form': AnnouncementForm(), 'success': True})
+            
+            # Redirect with toast parameters
+            from urllib.parse import quote
+            title = quote(announcement.title)
+            return redirect(f"{reverse('announcement_dispatcher')}?success=true&action=added&title={title}")
     else:
         form = AnnouncementForm()
     return render(request, 'announcements/add_announcement.html', {"form": form})
 
 
 # Edit Announcement View
-@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"])
+@role_required(allowed_roles=["VP", "DIRECTOR", "UESO"], require_confirmed=True)
 def edit_announcement_view(request, id):
 
     announcement = get_object_or_404(Announcement, id=id)
+    was_scheduled = announcement.is_scheduled
+    
     if request.method == 'POST':
+        # Check if user wants to remove the cover photo
+        if request.POST.get('remove_cover_photo') == 'true':
+            if announcement.cover_photo:
+                announcement.cover_photo.delete(save=False)
+                announcement.cover_photo = None
+        
         form = AnnouncementForm(request.POST, request.FILES, instance=announcement)
         if form.is_valid():
             edited = form.save(commit=False)
@@ -416,7 +418,12 @@ def edit_announcement_view(request, id):
             now = timezone.now()
             edited.edited_by = request.user
             edited.edited_at = now
+            send_email = False
+            
             if not scheduled_at:                                # If scheduled_at is empty, not scheduled
+                # If this was previously scheduled and now being published immediately
+                if was_scheduled and not edited.published_at:
+                    send_email = True
                 edited.published_at = now
                 edited.is_scheduled = False
                 edited.scheduled_at = None
@@ -427,7 +434,11 @@ def edit_announcement_view(request, id):
                 edited.scheduled_by = request.user
 
             edited.save()
-            return render(request, 'announcements/edit_announcement.html', {'form': form, 'success': True, 'posted': True})
+            
+            # Redirect with toast parameters
+            from urllib.parse import quote
+            title = quote(edited.title)
+            return redirect(f"{reverse('announcement_dispatcher')}?success=true&action=edited&title={title}")
     else:
         form = AnnouncementForm(instance=announcement)
     return render(request, 'announcements/edit_announcement.html', {"form": form, "announcement": announcement})
@@ -435,29 +446,43 @@ def edit_announcement_view(request, id):
 
 # Delete Announcement View
 @role_required(allowed_roles=["VP", "DIRECTOR", "UESO"])
+@require_POST
 def delete_announcement_view(request, id):
     from .models import Announcement
     announcement = get_object_or_404(Announcement, id=id)
+    title = announcement.title
     announcement.delete()
-    return HttpResponseRedirect(reverse('announcement_dispatcher'))
+    
+    # Redirect with toast parameters
+    from urllib.parse import quote
+    title_encoded = quote(title)
+    return redirect(f"{reverse('announcement_dispatcher')}?success=true&action=deleted&title={title_encoded}")
 
 # Archive Announcement View
 @role_required(allowed_roles=["VP", "DIRECTOR", "UESO"])
+@require_POST
 def archive_announcement_view(request, id):
     announcement = get_object_or_404(Announcement, id=id)
-    if request.method == 'POST' or request.method == 'GET':
-        announcement.archived = True
-        announcement.save()
-        return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/'))
-    return redirect('announcement_dispatcher')
+    title = announcement.title
+    announcement.archived = True
+    announcement.save()
+
+    # Redirect with toast parameters
+    from urllib.parse import quote
+    title_encoded = quote(title)
+    return redirect(f"{reverse('announcement_dispatcher')}?success=true&action=archived&title={title_encoded}")
 
 
 # Unarchive Announcement View
 @role_required(allowed_roles=["VP", "DIRECTOR", "UESO"])
+@require_POST
 def unarchive_announcement_view(request, id):
     announcement = get_object_or_404(Announcement, id=id)
-    if request.method == 'POST' or request.method == 'GET':
-        announcement.archived = False
-        announcement.save()
-        return HttpResponseRedirect(request.META.get('HTTP_REFERER', '/'))
-    return redirect('announcement_dispatcher')
+    title = announcement.title
+    announcement.archived = False
+    announcement.save()
+
+    # Redirect with toast parameters
+    from urllib.parse import quote
+    title_encoded = quote(title)
+    return redirect(f"{reverse('announcement_dispatcher')}?success=true&action=unarchived&title={title_encoded}")

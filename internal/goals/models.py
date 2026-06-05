@@ -1,3 +1,128 @@
 from django.db import models
+from django.contrib.auth import get_user_model
+from internal.agenda.models import Agenda
+from shared.projects.models import SustainableDevelopmentGoal
+from django.utils import timezone
 
-# Create your models here.
+
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+from django.urls import reverse
+User = get_user_model()
+
+class Goal(models.Model):
+    STATUS_CHOICES = [
+        ('ACTIVE', 'Active'),
+        ('COMPLETED', 'Completed'),
+        ('CANCELLED', 'Cancelled'),
+        ('ON_HOLD', 'On Hold'),
+    ]
+    
+    PRIORITY_CHOICES = [
+        ('HIGH', 'High'),
+        ('MEDIUM', 'Medium'),
+        ('LOW', 'Low'),
+    ]
+    
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    target_value = models.IntegerField(help_text="Target number for this goal")
+    current_value = models.IntegerField(default=0, help_text="Current progress value")
+    unit = models.CharField(max_length=50, default="items", help_text="Unit of measurement (e.g., projects, students)")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ACTIVE')
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='MEDIUM')
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_goals')
+    assigned_to = models.ForeignKey(User, on_delete=models.CASCADE, related_name='assigned_goals', null=True, blank=True)
+    start_date = models.DateField(default=timezone.now)
+    target_date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Optional filters to define what this goal tracks
+    agenda = models.ForeignKey(Agenda, on_delete=models.SET_NULL, null=True, blank=True, related_name='goals')
+    sdg = models.ForeignKey(SustainableDevelopmentGoal, on_delete=models.SET_NULL, null=True, blank=True, related_name='goals')  # Kept for backward compatibility
+    sdgs = models.ManyToManyField(SustainableDevelopmentGoal, blank=True, related_name='goal_set')
+    project_status = models.CharField(max_length=20, null=True, blank=True)
+    
+    @property
+    def progress_percentage(self):
+        if self.target_value == 0:
+            return 0
+        return min(100, (self.current_value / self.target_value) * 100)
+    
+    @property
+    def is_overdue(self):
+        return self.status == 'ACTIVE' and timezone.now().date() > self.target_date
+    
+    def __str__(self):
+        return self.title
+    
+    class Meta:
+        ordering = ['-created_at']
+
+
+# Logging signals for Goal actions
+@receiver(post_save, sender=Goal)
+def log_goal_action(sender, instance, created, **kwargs):
+    from system.logs.models import LogEntry
+    # Skip logging if this is being called from within a signal to avoid duplicates
+    if hasattr(instance, '_skip_log'):
+        return
+    action = 'CREATE' if created else 'UPDATE'
+    user = instance.created_by if created else instance.assigned_to or instance.created_by
+
+    # Only create notification for active/completed goals
+    is_notification = instance.status in ['ACTIVE', 'COMPLETED']
+
+
+    # Use the main goals page as the URL
+    try:
+        url = reverse('goal')
+    except Exception:
+        url = ''
+
+    # Create better detail messages
+    if created and is_notification:
+        details = f"A new goal has been created: {instance.title}"
+    elif not created:
+        details = f"Goal updated: {instance.title}"
+    else:
+        details = f"A new goal draft has been created: {instance.title}"
+
+    LogEntry.objects.create(
+        user=user,
+        action=action,
+        model='Goal',
+        object_id=instance.id,
+        object_repr=instance.title,
+        details=details,
+        url=url,
+        is_notification=is_notification
+    )
+
+
+@receiver(post_delete, sender=Goal)
+def log_goal_delete(sender, instance, **kwargs):
+    from system.logs.models import LogEntry
+    LogEntry.objects.create(
+        user=instance.assigned_to or instance.created_by,
+        action='DELETE',
+        model='Goal',
+        object_id=instance.id,
+        object_repr=str(instance),
+        details=f"Title: {instance.title}"
+    )
+
+class GoalQualifier(models.Model):
+    goal = models.ForeignKey(Goal, on_delete=models.CASCADE, related_name='qualifiers')
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    is_completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.goal.title} - {self.name}"
+    
+    class Meta:
+        ordering = ['created_at']

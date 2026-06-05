@@ -1,0 +1,1010 @@
+{% extends "base_internal.html" %}
+{% block content %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link href="{% static 'internal/analytics/styles.css' %}" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css" integrity="sha512-2SwdPD6INVrV/lHTZbO2nodKhrnDdJK9/kg2XD1r9uGqPo1cUbujc+IYdlYdEErWNu69gVcYgdxlmVmzTWnetw==" crossorigin="anonymous" referrerpolicy="no-referrer"/>
+</head>
+<body> 
+    <svg style="display: none;">
+        <symbol id="file-export" viewBox="0 0 640 640" fill="currentColor">
+            <path d="M128.5 64C93.2 64 64.5 92.7 64.5 128L64.5 512C64.5 547.3 93.2 576 128.5 576L384.5 576C419.8 576 448.5 547.3 448.5 512L448.5 416L526.6 416L495.6 447C486.2 456.4 486.2 471.6 495.6 480.9C505 490.2 520.2 490.3 529.5 480.9L601.5 408.9C610.9 399.5 610.9 384.3 601.5 375L529.5 303C520.1 293.6 504.9 293.6 495.6 303C486.3 312.4 486.2 327.6 495.6 336.9L526.6 367.9L448.5 367.9L448.5 234.4C448.5 217.4 441.8 201.1 429.8 189.1L323.2 82.7C311.2 70.7 295 64 278 64L128.5 64zM390 240L296.5 240C283.2 240 272.5 229.3 272.5 216L272.5 122.5L390 240zM256.5 392C256.5 378.7 267.2 368 280.5 368L384.5 368L384.5 416L280.5 416C267.2 416 256.5 405.3 256.5 392z"/>
+        </symbol> 
+        <symbol id="upward-trend" viewBox="0 0 640 640" fill="green">
+            <path d="M416 224C398.3 224 384 209.7 384 192C384 174.3 398.3 160 416 160L576 160C593.7 160 608 174.3 608 192L608 352C608 369.7 593.7 384 576 384C558.3 384 544 369.7 544 352L544 269.3L374.6 438.7C362.1 451.2 341.8 451.2 329.3 438.7L224 333.3L86.6 470.6C74.1 483.1 53.8 483.1 41.3 470.6C28.8 458.1 28.8 437.8 41.3 425.3L201.3 265.3C213.8 252.8 234.1 252.8 246.6 265.3L352 370.7L498.7 224L416 224z"/>
+        </symbol>
+        <symbol id="downward-trend" viewBox="0 0 640 640" fill="red">
+            <path d="M416 416C398.3 416 384 430.3 384 448C384 465.7 398.3 480 416 480L576 480C593.7 480 608 465.7 608 448L608 288C608 270.3 593.7 256 576 256C558.3 256 544 270.3 544 288L544 370.7L374.6 201.3C362.1 188.8 341.8 188.8 329.3 201.3L224 306.7L86.6 169.4C74.1 156.9 53.8 156.9 41.3 169.4C28.8 181.9 28.8 202.2 41.3 214.7L201.3 374.7C213.8 387.2 234.1 387.2 246.6 374.7L352 269.3L498.7 416L416 416z"/>
+        </symbol>
+        <symbol id="projects" viewBox="0 0 576 576" fill="currentColor">
+            <path d="M480 352c-35.3 0-64 28.7-64 64s28.7 64 64 64s64-28.7 64-64s-28.7-64-64-64zm-144 0c-35.3 0-64 28.7-64 64s28.7 64 64 64s64-28.7 64-64s-28.7-64-64-64zm-144 0c-35.3 0-64 28.7-64 64s28.7 64 64 64s64-28.7 64-64s-28.7-64-64-64zM0 64C0 28.7 28.7 0 64 0H416c35.3 0 64 28.7 64 64V320H64c-35.3 0-64-28.7-64-64V64zM512 64V256H576V64c0-35.3-28.7-64-64-64H512z"/>
+        </symbol>
+        <symbol id="events" viewBox="0 0 576 576" fill="currentColor">
+            <path d="M152 48c0-8.8-7.2-16-16-16s-16 7.2-16 16v32H48c-26.5 0-48 21.5-48 48v256c0 26.5 21.5 48 48 48h480c26.5 0 48-21.5 48-48V128c0-26.5-21.5-48-48-48H328V48c0-8.8-7.2-16-16-16s-16 7.2-16 16v32H152V48zm272 80H48c-8.8 0-16 7.2-16 16v256c0 8.8 7.2 16 16 16h480c8.8 0 16-7.2 16-16V144c0-8.8-7.2-16-16-16H424zM16 448h544v64c0 17.7-14.3 32-32 32H48c-17.7 0-32-14.3-32-32V448z"/>
+        </symbol>
+        <symbol id="providers" viewBox="0 0 576 576" fill="currentColor">
+            <path d="M448 352c-23.7 0-46.7 3.5-64 8.7V176c0-44.2-35.8-80-80-80s-80 35.8-80 80v184.7c-17.3-5.2-40.3-8.7-64-8.7c-70.7 0-128 57.3-128 128s57.3 128 128 128h384c70.7 0 128-57.3 128-128s-57.3-128-128-128zM304 352V176c0-8.8 7.2-16 16-16s16 7.2 16 16v176c-3.1 0-6.1 .2-9.2 .6c-2.4 .3-4.8 .4-7.2 .4z"/>
+        </symbol>
+        <symbol id="trained" viewBox="0 0 576 576" fill="currentColor">
+            <path d="M352 320c0 44.18-35.82 80-80 80s-80-35.82-80-80 35.82-80 80-80 80 35.82 80 80zm-80-160c44.18 0 80-35.82 80-80s-35.82-80-80-80-80 35.82-80 80 35.82 80 80 80zM272 576C121.6 576 0 454.4 0 304 0 153.6 121.6 32 272 32c150.4 0 272 121.6 272 272 0 150.4-121.6 272-272 272zm0-48c124.6 0 224-100.4 224-224C496 179.4 395.6 80 272 80 148.4 80 48 179.4 48 304c0 124.6 100.4 224 224 224z"/>
+        </symbol>
+        
+    </svg>  
+<main> 
+    <div class="upper">
+        <div class="time">
+            <h2 style="margin:0 0 0 0;">Analytics</h2>
+
+            <div class="dropdown" style="margin-left: 1.5rem;">
+                <button id="dateRangeBtn" class="dropdown-btn">This Quarter ▾</button>
+                <div id="popupOverlay" class="popup-overlay">
+                    <div id="datePopup" class="date-popup">
+                        <h4>Select Date Range</h4>
+
+                        <label for="startDate">Start Date:</label>
+                        <input type="date" id="startDate" class="date-input">
+
+                        <label for="endDate">End Date:</label>
+                        <input type="date" id="endDate" class="date-input">
+
+                        <div class="popup-actions">
+                            <button id="confirmExport" class="confirm-btn">Confirm</button>
+                            <button id="cancelExport" class="cancel-btn">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <button class="export-btn" id="exportProjectBtn" type="button">  
+                <a href="{% url 'export_analytics_data' %}" id="exportBtn">
+                    <i class="fa-solid fa-download"></i>
+                    Export 
+                </a>
+            </button>
+        </div>
+    </div>
+    
+    <div class="content">
+        <div class="card-group" id="card-metrics-group">
+            <div class="card color-one">
+                <div class="card-icon-group">
+                    <div class="card-icon">
+                        <svg>
+                            <use href="#projects"/>
+                        </svg>
+                    </div>
+                    <div class="card-description">
+                        <p>Projects</p>
+                        <span class="sub-description">Active projects under UESO</span>
+                    </div>
+                </div>
+                <div class="card-metric-group">
+                    <h2 id="metric_active_projects">1000</h2> <span class="card-status">Based on selected date.</span>
+                </div>
+            </div>
+
+            <div class="card color-two">
+                <div class="card-icon-group">
+                    <div class="card-icon">
+                        <svg>
+                            <use href="#events"/>
+                        </svg>
+                    </div>
+                    <div class="card-description">
+                        <p>Activities</p>
+                        <span class="sub-description">Total events accomplished</span>
+                    </div>
+                </div>
+                <div class="card-metric-group">
+                    <h2 id="metric_total_events">100</h2> <span class="card-status">Based on selected date.</span>
+                </div>
+            </div>
+
+            <div class="card color-three">
+                <div class="card-icon-group">
+                    <div class="card-icon">
+                        <svg>
+                            <use href="#providers"/>
+                        </svg>
+                    </div>
+                    <div class="card-description">
+                        <p>Active Implementers</p>
+                        <span class="sub-description">Service partners this period</span>
+                    </div>
+                </div>
+                <div class="card-metric-group">
+                    <h2 id="metric_active_providers">50</h2> <span class="card-status">Based on selected date.</span>
+                </div>
+            </div>
+
+            <div class="card color-four">
+                <div class="card-icon-group">
+                    <div class="card-icon">
+                        <svg>
+                            <use href="#trained"/>
+                        </svg>
+                    </div>
+                    <div class="card-description">
+                        <p>Trained Individuals</p>
+                        <span class="sub-description">Direct beneficaries of UESO</span>
+                    </div>
+                </div>
+                <div class="card-metric-group">
+                    <h2 id="metric_trained_individuals">500</h2> <span class="card-status">Based on selected date.</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="first">
+            <div class="card" id="chart-active-projects">
+                <div class="title-container">
+                    <h4>Created Projects</h4>
+                    <span class="info-icon">    
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle" viewBox="0 0 16 16">
+                            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                            <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0"/>
+                        </svg>
+                        <span class="info-tooltip">Shows the trend of active projects over given time.</span>
+                    </span>
+                </div>
+                <canvas id="activeProjectsChart"></canvas>
+            </div>
+            <div class="stat-container">
+            </div>
+        </div>
+
+        <div class="second"> 
+            <div class="card" id="chart-trained-individuals" style="flex: 3.3;"> 
+                <div class="title-container">
+                    <h4>Trained Individuals</h4> 
+                    <span class="info-icon">    
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle" viewBox="0 0 16 16">
+                            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                            <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0"/>
+                        </svg>
+                        <span class="info-tooltip">Breakdown of trained individuals across different constituents, showing the reach and impact of training programs.</span>
+                    </span> 
+                </div>
+                <canvas id="trainedChart"></canvas>
+            </div>
+            <div class="card" id="chart-agenda-distribution" style="overflow: visible;"> 
+                <div class="title-container">
+                    <h4>Agenda Distribution</h4> 
+                    <span class="info-icon">    
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle" viewBox="0 0 16 16">
+                            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                            <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0"/>
+                        </svg>
+                        <span class="info-tooltip">Shows the distribution of different agenda types and their relative proportions in the overall activities.</span>
+                    </span> 
+                </div>
+                <div id="agendaChartWrapper" style="overflow: visible; height: 100%; width: 100%;">
+                    <canvas id="agendaDistributionChart"></canvas>
+                </div>
+                </div>
+        </div>
+
+        <div class="third">
+            <div class="card" id="chart-budget-allocation"> 
+                <div class="title-container">
+                    <h4>Budget Allocation</h4> 
+                    <span class="info-icon">    
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle" viewBox="0 0 16 16">
+                            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                            <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0"/>
+                        </svg>
+                        <span class="info-tooltip">Shows flow of given budget in constituents (Allotted, Committed, Unallocated).</span>
+                    </span> 
+                </div>
+                <canvas id="budgetMultiLineChart"></canvas>
+            </div>
+        </div>
+
+        {% if not is_college_restricted %}
+        <div class="card" id="chart-client-requests"> 
+            <div class="title-container">
+                <h4>Client Requests</h4> 
+                <span class="info-icon">    
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle" viewBox="0 0 16 16">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                        <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0"/>
+                    </svg>
+                    <span class="info-tooltip">Overview of client request statuses, showing approved, ongoing, and rejected requests distribution.</span>
+                </span> 
+            </div>
+            <canvas id="clientRequestsChart"></canvas>
+        </div>
+        {% endif %}
+    </div>
+</main>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('=== ANALYTICS CARDS & TRENDS SCRIPT START ===');
+
+        // --- Define global variables for dates ---
+        let selectedStartDate = '';
+        let selectedEndDate = '';
+
+        // --- API Endpoints ---
+        const baseApiUrl = '/analytics/data';
+        const TRENDS_ENDPOINT = "{% url 'project_trends_data' %}"; // URL for trends
+        const METRIC_ENDPOINTS = { // URLs for card metrics
+            'metric_active_projects': `${baseApiUrl}/metric/projects/`,
+            'metric_total_events': `${baseApiUrl}/metric/events/`,
+            'metric_active_providers': `${baseApiUrl}/metric/providers/`,
+            'metric_trained_individuals': `${baseApiUrl}/metric/individuals/`
+        };
+
+        // Helper to build URLs with dates
+        const buildUrl = (baseUrl, start, end) => `${baseUrl}?start_date=${start}&end_date=${end}`;
+
+        // --- Master Function to Update Cards & Trends ---
+        function updateCardsAndTrends(startStr, endStr) {
+            console.log(`Updating Cards & Trends for: ${startStr || 'default'} to ${endStr || 'default'}`);
+
+            // --- A. Fetch Card Metrics ---
+            Object.entries(METRIC_ENDPOINTS).forEach(([elementId, baseUrl]) => {
+                const url = buildUrl(baseUrl, startStr, endStr);
+                fetch(url)
+                    .then(response => {
+                        // FIX: Check for 500/error status and throw to catch block
+                        if (!response.ok) {
+                            if (response.status === 500) {
+                                return response.json().then(errorData => {
+                                    throw new Error(`HTTP error! status: ${response.status}. Detail: ${errorData.detail || errorData.error}`);
+                                });
+                            }
+                            throw new Error(`HTTP error! status: ${response.status} for ${url}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        const element = document.getElementById(elementId);
+                        if (element && data.metric !== undefined) {
+                            element.textContent = data.metric;
+                        } else if (element) {
+                            element.textContent = '0';
+                            console.warn(`Metric data missing for ${elementId}. Response:`, data);
+                        } else {
+                            console.warn(`Element with ID ${elementId} not found.`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error(`Error fetching metric for ${elementId}:`, error);
+                        const element = document.getElementById(elementId);
+                        if (element) element.textContent = 'Error';
+                        if(error.message.includes("Detail: ")) {
+                             // Display detailed error in console for debugging
+                             console.error("Backend Error Detail:", error.message.split("Detail: ")[1]);
+                        }
+                    });
+            });
+
+            // --- B. Fetch and Render Trend Stats ---
+            const trendsUrl = buildUrl(TRENDS_ENDPOINT, startStr, endStr);
+            const statContainer = document.querySelector('.stat-container');
+
+            if (statContainer) {
+                 fetch(trendsUrl)
+                    .then(response => {
+                        // FIX: Check for 500/error status
+                        if (!response.ok) {
+                            if (response.status === 500) {
+                                return response.json().then(errorData => {
+                                    throw new Error(`HTTP error! status: ${response.status}. Detail: ${errorData.detail || errorData.error}`);
+                                });
+                            }
+                            throw new Error(`HTTP error! status: ${response.status} for trends`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log("Trend data:", data);
+                        statContainer.innerHTML = ''; // Clear previous stats
+
+                        const createStatHTML = (statData, label) => { /* ... (same helper function as before) ... */
+                             if (!statData) return '';
+                             const trendIcon = statData.trend === 'down' ? 'downward-trend' : (statData.trend === 'up' ? 'upward-trend' : '');
+                             const changeClass = statData.trend === 'down' ? 'negative' : (statData.trend === 'up' ? 'positive' : '');
+                             const changePrefix = statData.change > 0 ? '+' : '';
+                             const changeText = statData.trend === 'flat' ? 'No change' : `${changePrefix}${statData.change}% vs previous period`;
+                             return `
+                                <div class="stat">
+                                    <div class="stat-label">${label}</div>
+                                    <div class="stat-number">${statData.number}</div>
+                                    <div class="stat-change ${changeClass}">
+                                        ${trendIcon ? `<svg width="20" height="20" style="fill: currentColor; vertical-align: middle; margin-right: 4px;"> <use href="#${trendIcon}"/></svg>` : ''}
+                                        ${changeText}
+                                    </div>
+                                </div>`;
+                        };
+
+                        statContainer.innerHTML += createStatHTML(data.created, "Projects Created");
+                        statContainer.innerHTML += createStatHTML(data.completed, "Projects Completed");
+
+                        if (statContainer.innerHTML === '') {
+                             statContainer.innerHTML = '<div class="stat"><div class="stat-label">Trend data not available.</div></div>';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching or rendering trend data:', error);
+                        if(statContainer) statContainer.innerHTML = '<div class="stat"><div class="stat-label" style="color: red;">Error loading trends.</div></div>';
+                        if(error.message.includes("Detail: ")) {
+                             // Display detailed error in console for debugging
+                             console.error("Backend Error Detail:", error.message.split("Detail: ")[1]);
+                        }
+                    });
+            } else {
+                 console.warn(".stat-container not found in HTML.");
+            }
+        } // --- End of updateCardsAndTrends ---
+
+        // --- Logic for Custom Date Popup (with Date Validation) ---
+        const openBtn = document.getElementById('dateRangeBtn');
+        const overlay = document.getElementById('popupOverlay');
+        const popup = document.getElementById('datePopup');
+        const confirmBtn = document.getElementById('confirmExport');
+        const cancelBtn = document.getElementById('cancelExport');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+
+        if (openBtn && overlay && popup && confirmBtn && cancelBtn && startDateInput && endDateInput) {
+             // Date Validation
+            startDateInput.addEventListener('change', () => { if (startDateInput.value) endDateInput.min = startDateInput.value; });
+            endDateInput.addEventListener('change', () => { if (endDateInput.value) startDateInput.max = endDateInput.value; });
+
+            // Show/Hide Popup
+            const showPopup = (show) => { /* ... (same showPopup function as before) ... */
+                 if (show) {
+                    overlay.style.display = 'flex';
+                     // Set inputs to current selection *before* showing
+                     startDateInput.value = selectedStartDate || ''; // Use global state
+                     endDateInput.value = selectedEndDate || ''; // Use global state
+                    setTimeout(() => { popup.classList.add('show'); }, 10);
+                } else {
+                    popup.classList.remove('show');
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                        startDateInput.max = ''; endDateInput.min = '';
+                    }, 250);
+                }
+            };
+
+            // Event Listeners
+            openBtn.addEventListener('click', () => showPopup(true));
+            cancelBtn.addEventListener('click', () => showPopup(false));
+            overlay.addEventListener('click', (event) => { if (event.target === overlay) showPopup(false); });
+
+            // Confirm Button Action
+            confirmBtn.addEventListener('click', () => {
+                const startStr = startDateInput.value;
+                const endStr = endDateInput.value;
+
+                 // Basic validation before proceeding
+                 if (startStr && endStr && new Date(startStr) > new Date(endStr)) {
+                    alert('Start date cannot be after end date.');
+                    return; // Stop processing
+                 }
+
+                // Update global state
+                selectedStartDate = startStr;
+                selectedEndDate = endStr;
+
+                // Format Date for Button Text
+                const formatDate = (dateStr) => { /* ... (same formatDate function) ... */
+                    if (!dateStr) return null;
+                    const date = new Date(dateStr + 'T00:00:00');
+                    if (isNaN(date)) return null;
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+                };
+                const formattedStart = formatDate(startStr);
+                const formattedEnd = formatDate(endStr);
+
+                // Update Button Text
+                if (formattedStart && formattedEnd) openBtn.textContent = `${formattedStart} - ${formattedEnd} ▾`;
+                else if (formattedStart) openBtn.textContent = `From ${formattedStart} ▾`;
+                else if (formattedEnd) openBtn.textContent = `Until ${formattedEnd} ▾`;
+                else openBtn.textContent = 'Last 300 Days ▾'; // Default text
+
+                // --- Call function to update Cards & Trends ---
+                updateCardsAndTrends(selectedStartDate, selectedEndDate);
+
+                // --- Trigger Chart Update (if chart script exists) ---
+                if (typeof window.refreshAnalyticsCharts === 'function') {
+                    window.refreshAnalyticsCharts(selectedStartDate, selectedEndDate);
+                } else {
+                    console.warn("refreshAnalyticsCharts function not found. Ensure chart script is loaded after this script.");
+                }
+                
+                // --- Update Export Link ---
+                if (typeof window.updateExportLink === 'function') {
+                    window.updateExportLink();
+                }
+
+                showPopup(false); // Close popup
+            });
+
+        } else {
+             if (document.getElementById('dateRangeBtn')) {
+                 console.error("Date filter button or popup elements might be incomplete!");
+             }
+        }
+
+        // --- Initial Load ---
+        // Set default 90-day range for global vars and button text
+        const today = new Date();
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(today.getDate() - 300);
+        const toISO = (date) => date.toISOString().split('T')[0];
+
+        selectedStartDate = toISO(ninetyDaysAgo);
+        selectedEndDate = toISO(today);
+
+        if (openBtn) {
+            const options = { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' };
+            openBtn.textContent = `${ninetyDaysAgo.toLocaleDateString('en-US', options)} - ${today.toLocaleDateString('en-US', options)} ▾`;
+        }
+        updateCardsAndTrends(selectedStartDate, selectedEndDate); // Fetch initial data
+
+        console.log('=== ANALYTICS CARDS & TRENDS SCRIPT END ===');
+    });
+</script>
+
+ <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('=== ANALYTICS SCRIPT START ===');
+
+        // --- 1. Global Date Variables & API Setup ---
+        let selectedStartDate = '';
+        let selectedEndDate = '';
+
+        const baseApiUrl = '/analytics/data';
+        const TRENDS_ENDPOINT = "{% url 'project_trends_data' %}";
+        const METRIC_ENDPOINTS = {
+            'metric_active_projects': `${baseApiUrl}/metric/projects/`,
+            'metric_total_events': `${baseApiUrl}/metric/events/`,
+            'metric_active_providers': `${baseApiUrl}/metric/providers/`,
+            'metric_trained_individuals': `${baseApiUrl}/metric/individuals/`
+        };
+
+        const ENDPOINTS = {
+            active: "{% url 'active_projects_chart_data' %}",
+            budget: "{% url 'budget_allocation_chart_data' %}",
+            agenda: "{% url 'agenda_distribution_chart_data' %}",
+            trained: "{% url 'trained_individuals_chart_data' %}",
+            requests: "{% url 'request_status_chart_data' %}",
+        };
+        
+        const buildUrl = (baseUrl, start, end) => `${baseUrl}?start_date=${start}&end_date=${end}`;
+        
+        let chartInstances = {
+            activeProjectsChart: null,
+            budgetMultiLineChart: null,
+            agendaDistributionChart: null,
+            trainedChart: null,
+            clientRequestsChart: null
+        };
+
+        // --- 2. Utility Functions ---
+        
+        async function fetchChartData(endpoint, start, end) {
+            const url = `${endpoint}?start_date=${start}&end_date=${end}`;
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`HTTP error! status: ${response.status}. Detail: ${errorData.detail || errorData.error}`);
+                }
+                const json = await response.json();
+                return json;
+            } catch (error) {
+                console.warn(`Error fetching ${endpoint}:`, error);
+                return null;
+            }
+        }
+        
+        const formatDate = (dateStr) => {
+            if (!dateStr) return null;
+            const date = new Date(dateStr + 'T00:00:00');
+            if (isNaN(date)) return null;
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+        };
+        
+        // START: Custom Tooltip Handler for Agenda Chart
+        function externalTooltipHandler({ chart, tooltip }) {
+            let tooltipEl = document.getElementById('chartjs-tooltip');
+            
+            if (!tooltipEl) {
+                // Create the tooltip element if it doesn't exist
+                tooltipEl = document.createElement('div');
+                tooltipEl.id = 'chartjs-tooltip';
+                tooltipEl.style.background = 'rgba(0, 0, 0, 0.7)';
+                tooltipEl.style.borderRadius = '3px';
+                tooltipEl.style.color = 'white';
+                tooltipEl.style.opacity = 1;
+                tooltipEl.style.pointerEvents = 'none';
+                tooltipEl.style.position = 'absolute';
+                tooltipEl.style.transform = 'translate(-50%, 0)';
+                tooltipEl.style.transition = 'all .1s ease';
+                tooltipEl.style.zIndex = 1000;
+                
+                // KEY CHANGE: Append the tooltip to the new wrapper DIV
+                const wrapper = document.getElementById('agendaChartWrapper');
+                if (wrapper) {
+                     wrapper.appendChild(tooltipEl);
+                } else {
+                     chart.canvas.parentNode.appendChild(tooltipEl); // Fallback
+                }
+            }
+
+            // Hide if no tooltip
+            if (tooltip.opacity === 0) {
+                tooltipEl.style.opacity = 0;
+                return;
+            }
+
+            // Set tooltip data and styles
+            if (tooltip.body) {
+                const titleLines = tooltip.title || [];
+                const bodyLines = tooltip.body.map(b => b.lines);
+
+                let innerHtml = '<thead>';
+                titleLines.forEach(title => {
+                    innerHtml += '<tr><th>' + title + '</th></tr>';
+                });
+                innerHtml += '</thead><tbody>';
+
+                bodyLines.forEach((body, i) => {
+                    const colors = tooltip.labelColors[i];
+                    let style = 'background:' + colors.backgroundColor;
+                    style += '; border-color:' + colors.borderColor;
+                    style += '; border-width: 2px';
+                    style += '; margin-right: 10px';
+                    style += '; height: 10px; width: 10px; display: inline-block;';
+                    const span = '<span style="' + style + '"></span>';
+                    innerHtml += '<tr><td>' + span + body + '</td></tr>';
+                });
+
+                innerHtml += '</tbody>';
+
+                let tableRoot = tooltipEl.querySelector('table');
+                if (!tableRoot) {
+                    tableRoot = document.createElement('table');
+                    tableRoot.style.margin = '0px';
+                    // Apply font size style to the table content for uniformity
+                    // We read the bodyFont size from the chart options
+                    const fontSize = tooltip.options.bodyFont.size || '12px'; 
+                    tableRoot.style.fontSize = fontSize + 'px'; 
+                    tooltipEl.innerHTML = '';
+                    tooltipEl.appendChild(tableRoot);
+                }
+                tableRoot.innerHTML = innerHtml;
+            }
+
+            // Positioning based on chart dimensions and tooltip model
+            const { offsetLeft: canvasLeft, offsetTop: canvasTop } = chart.canvas;
+            
+            const wrapper = document.getElementById('agendaChartWrapper');
+            const scrollX = wrapper ? wrapper.scrollLeft : 0;
+            const scrollY = wrapper ? wrapper.scrollTop : 0;
+
+            tooltipEl.style.left = canvasLeft + tooltip.caretX - scrollX + 'px';
+            tooltipEl.style.top = canvasTop + tooltip.caretY - scrollY + 'px';
+            // Use padding defined in agendaConfig.options.plugins.tooltip.padding
+            tooltipEl.style.padding = tooltip.options.padding + 'px ' + tooltip.options.padding + 'px';
+            tooltipEl.style.opacity = 1;
+        }
+        // END: Custom Tooltip Handler
+
+        // --- 3. Update Cards & Trends Logic (Content omitted for brevity) ---
+
+        function updateCardsAndTrends(startStr, endStr) {
+             // ... (Implementation remains the same as previous step) ...
+            Object.entries(METRIC_ENDPOINTS).forEach(([elementId, baseUrl]) => {
+                const url = buildUrl(baseUrl, startStr, endStr);
+                fetch(url)
+                    .then(response => { /* ... response checking ... */ return response.json(); })
+                    .then(data => {
+                        const element = document.getElementById(elementId);
+                        if (element && data.metric !== undefined) { element.textContent = data.metric; } else if (element) { element.textContent = '0'; }
+                    })
+                    .catch(error => { console.error(`Error fetching metric for ${elementId}:`, error); });
+            });
+
+            const trendsUrl = buildUrl(TRENDS_ENDPOINT, startStr, endStr);
+            const statContainer = document.querySelector('.stat-container');
+
+            if (statContainer) {
+                 fetch(trendsUrl)
+                    .then(response => { /* ... response checking ... */ return response.json(); })
+                    .then(data => {
+                        statContainer.innerHTML = '';
+                        const createStatHTML = (statData, label) => {
+                             if (!statData) return '';
+                             const trendIcon = statData.trend === 'down' ? 'downward-trend' : (statData.trend === 'up' ? 'upward-trend' : '');
+                             const changeClass = statData.trend === 'down' ? 'negative' : (statData.trend === 'up' ? 'positive' : '');
+                             const changePrefix = statData.change > 0 ? '+' : '';
+                             const changeText = statData.trend === 'flat' ? 'No change' : `${changePrefix}${statData.change}% vs previous period`;
+                             return `
+                                <div class="stat">
+                                    <div class="stat-label">${label}</div>
+                                    <div class="stat-number">${statData.number}</div>
+                                    <div class="stat-change ${changeClass}">
+                                        ${trendIcon ? `<svg width="20" height="20" style="fill: currentColor; vertical-align: middle; margin-right: 4px;"> <use href="#${trendIcon}"/></svg>` : ''}
+                                        ${changeText}
+                                    </div>
+                                </div>`;
+                        };
+                        statContainer.innerHTML += createStatHTML(data.created, "Projects Created");
+                        statContainer.innerHTML += createStatHTML(data.completed, "Projects Completed");
+                        if (statContainer.innerHTML === '') { statContainer.innerHTML = '<div class="stat"><div class="stat-label">Trend data not available.</div></div>'; }
+                    })
+                    .catch(error => { console.error('Error fetching trend data:', error); });
+            }
+        }
+        
+        const createGradient = (ctx, colorTop, colorBottom) => {
+            // x0, y0, x1, y1 -> 0,0,0,300 creates a vertical gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, colorTop); 
+            gradient.addColorStop(1, colorBottom); 
+            return gradient;
+        };
+
+        async function refreshCharts(start, end) {
+            const fetchDataAndRenderChart = async (canvasId, apiUrl, chartConfigFn) => {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) { console.error(`Canvas element ${canvasId} not found.`); return; }
+                const ctx = canvas.getContext('2d');
+                if (chartInstances[canvasId]) { chartInstances[canvasId].destroy(); chartInstances[canvasId] = null; }
+
+                try {
+                    const data = await fetchChartData(apiUrl, start, end);
+                    if (!data || typeof data !== 'object') { throw new Error(`Invalid data received: ${JSON.stringify(data)}`); }
+                    chartInstances[canvasId] = new Chart(ctx, chartConfigFn(data, start, end, ctx)); 
+                } catch (error) {
+                    console.error(`Error fetching/rendering chart ${canvasId}:`, error);
+                }
+            };
+            
+            // --- CONFIG 1: Active Projects Chart (Line Chart) ---
+            const activeProjectsConfig = (data, start, end, ctx) => {
+                const timeUnit = data.timeUnit || 'month'; 
+                const hasData = data.data && data.data.length > 0;
+                
+                const gradient = createGradient(
+                    ctx,
+                    'rgba(10, 230, 220, 0.6)',
+                    'rgba(0, 0, 255, 0.1)'
+                );
+
+                return {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Created Projects',
+                            data: data.data || [], 
+                            borderColor: 'rgba(75, 192, 192, 0.8)', 
+                            backgroundColor: gradient,
+                            tension: 0.3,
+                            fill: true,
+                            pointBackgroundColor: 'rgba(75, 192, 192, 1)', 
+                            pointBorderColor: 'rgba(255, 255, 255, 1)',
+                            pointHoverBackgroundColor: 'rgba(75, 192, 192, 1)',
+                            pointHoverBorderColor: 'rgba(0, 0, 0, 0.1)',
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }]
+                    },
+                    options: {
+                        aspectRatio: 3, 
+                        scales: { y: { beginAtZero: true }, x: { type: 'time', time: { unit: timeUnit, tooltipFormat: 'PP' }, ticks: { autoSkip: true, maxTicksLimit: 20 } } },
+                        plugins: { 
+                            legend: { display: false }, 
+                            tooltip: { // Standardized tooltip appearance
+                                enabled: hasData, 
+                                mode: 'index', 
+                                intersect: false,
+                                padding: 10, // Standardized padding
+                                bodyFont: { size: 12 } // Standardized font size
+                            }, 
+                            datalabels: { display: false } 
+                        }
+                    }
+                };
+            };
+
+            // --- CONFIG 2: Trained Individuals Chart (Line Chart) ---
+            const trainedIndividualsConfig = (data, start, end, ctx) => {
+                const timeUnit = data.timeUnit || 'month'; 
+                const hasData = data.data && data.data.length > 0;
+                const gradient = createGradient(
+                    ctx,
+                    'rgba(135, 206, 250, 0.9)', 
+                    'rgba(144, 238, 144, 0.1)'
+                );
+                
+                return {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Individuals Trained',
+                            data: data.data || [], 
+                            borderColor: 'rgba(135, 206, 250, 0.8)', 
+                            backgroundColor: gradient,
+                            fill: true,
+                            tension: 0.3,
+                            pointBackgroundColor: 'rgba(135, 206, 250, 1)', 
+                            pointBorderColor: 'rgba(255, 255, 255, 1)',
+                            pointHoverBackgroundColor: 'rgba(135, 206, 250, 1)',
+                            pointHoverBorderColor: 'rgba(0, 0, 0, 0.1)',
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }]
+                    },
+                    options: {
+                        aspectRatio: 3, 
+                        scales: { y: { beginAtZero: true }, x: { type: 'time', time: { unit: timeUnit, tooltipFormat: 'PP' }, ticks: { autoSkip: true, maxTicksLimit: 20 } } },
+                        plugins: { 
+                            legend: { display: false }, 
+                            tooltip: { // Standardized tooltip appearance
+                                enabled: hasData, 
+                                mode: 'index', 
+                                intersect: false,
+                                padding: 10, // Standardized padding
+                                bodyFont: { size: 12 } // Standardized font size
+                            }, 
+                            datalabels: { display: false } 
+                        }
+                    }
+                };
+            };
+            
+            // --- CONFIG 3: Budget Allocation (Bar Chart) ---
+            const budgetConfig = (data) => {
+                const getBackgroundColor = (dataset) => dataset.backgroundColor || 'rgba(100, 100, 100, 0.66)';
+                const getBorderColor = (dataset) => dataset.borderColor || 'rgb(100, 100, 100)';
+                const datasets = (data.datasets || []).map(dataset => ({
+                    label: dataset.label, data: dataset.data || [], backgroundColor: getBackgroundColor(dataset), borderColor: getBorderColor(dataset), borderWidth: 1,
+                }));
+                return {
+                    type: 'bar', data: { labels: data.labels || [], datasets: datasets }, options: { 
+                        aspectRatio: 1.5, 
+                        indexAxis: 'y', responsive: true, 
+                        scales: { x: { beginAtZero: true, title: { display: true, text: 'Budget Amount (₱)' }, ticks: { callback: value => `₱${value.toLocaleString()}` } }, y: { beginAtZero: true, title: { display: false } } }, 
+                        plugins: { 
+                            legend: { display: false }, 
+                            tooltip: { // Standardized tooltip appearance
+                                padding: 10, // Standardized padding
+                                bodyFont: { size: 12 }, // Standardized font size
+                                callbacks: { label: (c) => `${c.dataset.label}: ₱${c.raw.toLocaleString()}` } 
+                            }, 
+                            datalabels: { display: false } 
+                        } 
+                    }
+                }
+            };
+            
+            // --- CONFIG 4: Agenda Distribution (Pie Chart) ---
+            const agendaConfig = (data) => ({
+                type: 'pie', data: { labels: data.labels || [], datasets: [{ label: 'Projects per Agenda', data: data.counts || [], backgroundColor: ["#FF638466","#36A2EB66","#FFCE5666","#4BC0C066","#9966FF66", "#FF9F4066","#8BC34A66","#E91E6366","#00BCD466"], borderColor: ["#FF6384","#36A2EB","#FFCE56","#4BC0C0","#9966FF", "#FF9F40","#8BC34A","#E91E63","#00BCD4"], borderWidth: 2, hoverBackgroundColor: ["#FF6384","#36A2EB","#FFCE56","#4BC0C0","#9966FF", "#FF9F40","#8BC34A","#E91E63","#00BCD4"], hoverOffset: 10, hoverBorderColor: '#fff', hoverBorderWidth: 2 }] },
+                options: { 
+                    plugins: { 
+                        legend: false, 
+                        tooltip: { 
+                            enabled: false, 
+                            external: externalTooltipHandler,
+                            padding: 10, // Standardized tooltip padding
+                            bodyFont: { size: 12 }, // Standardized font size
+                            callbacks: { 
+                                label: function(context) { 
+                                    let total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); 
+                                    let value = context.raw; 
+                                    let percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0; 
+                                    return `${context.label}: ${value} (${percentage}%)`; 
+                                } 
+                            } 
+                        }, 
+                        datalabels: { display: false } 
+                    } 
+                }
+            });
+
+            // --- CONFIG 5: Client Requests (Stacked Bar Chart) ---
+            const requestStatusConfig = (data) => ({
+                type: 'bar', data: { labels: ['Request Status'], datasets: [
+                    { label: 'Approved', data: [data.approved_pct || 0], backgroundColor: '#33ff99', borderColor: '#00cc66', borderWidth: '2', barThickness: 40 },
+                    { label: 'Ongoing', data: [data.ongoing_pct || 0], backgroundColor: '#ffee66', borderColor: '#ffbb33', borderWidth: '2', barThickness: 40 },
+                    { label: 'Rejected', data: [data.rejected_pct || 0], backgroundColor: '#ff9999', borderColor: '#ff3333', borderWidth: '2', barThickness: 40 }
+                ]},
+                options: { 
+                    aspectRatio: 6, 
+                    indexAxis: 'y', responsive: true, 
+                    plugins: { 
+                        legend: { display: true }, 
+                        tooltip: { 
+                            padding: 10, // Standardized tooltip padding
+                            bodyFont: { size: 12 }, // Standardized font size
+                            callbacks: { label: function (context) {
+                                const totalRequests = data.total_count || 0;
+                                const percentage = context.raw;
+                                const count = totalRequests > 0 ? Math.round(totalRequests * (percentage / 100)) : 0;
+                                return `${context.dataset.label}: ${count} (${percentage.toFixed(1)}%)`;
+                            } } 
+                        }, 
+                        datalabels: { display: false } 
+                    }, 
+                    scales: { x: { stacked: true, max: 100, display: false, grid: { display: false } }, y: { stacked: true, display: false, grid: { display: false } } }, layout: { padding: { top: 10, bottom: 10, left: 20, right: 20 } } 
+                }
+            });
+            
+            await fetchDataAndRenderChart('activeProjectsChart', ENDPOINTS.active, activeProjectsConfig);
+            await fetchDataAndRenderChart('budgetMultiLineChart', ENDPOINTS.budget, budgetConfig);
+            await fetchDataAndRenderChart('agendaDistributionChart', ENDPOINTS.agenda, agendaConfig);
+            await fetchDataAndRenderChart('trainedChart', ENDPOINTS.trained, trainedIndividualsConfig);
+            
+            // Only load client requests chart if user has access (not college-restricted)
+            {% if not is_college_restricted %}
+            await fetchDataAndRenderChart('clientRequestsChart', ENDPOINTS.requests, requestStatusConfig);
+            {% endif %}
+        }
+
+        window.refreshAnalyticsCharts = refreshCharts;
+
+
+        // --- 5. Date Picker/Initial Load/Export Logic (Content omitted for brevity) ---
+
+        const openBtn = document.getElementById('dateRangeBtn');
+        const overlay = document.getElementById('popupOverlay');
+        const popup = document.getElementById('datePopup');
+        const confirmBtn = document.getElementById('confirmExport');
+        const cancelBtn = document.getElementById('cancelExport');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+
+        if (openBtn && overlay && popup && confirmBtn && cancelBtn && startDateInput && endDateInput) {
+            startDateInput.addEventListener('change', () => { if (startDateInput.value) endDateInput.min = startDateInput.value; });
+            endDateInput.addEventListener('change', () => { if (endDateInput.value) startDateInput.max = endDateInput.value; });
+
+            const showPopup = (show) => {
+                 if (show) {
+                    overlay.style.display = 'flex';
+                     startDateInput.value = selectedStartDate || '';
+                     endDateInput.value = selectedEndDate || '';
+                    setTimeout(() => { popup.classList.add('show'); }, 10);
+                } else {
+                    popup.classList.remove('show');
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                        startDateInput.max = ''; endDateInput.min = '';
+                    }, 250);
+                }
+            };
+
+            openBtn.addEventListener('click', () => showPopup(true));
+            cancelBtn.addEventListener('click', () => showPopup(false));
+            overlay.addEventListener('click', (event) => { if (event.target === overlay) showPopup(false); });
+
+            confirmBtn.addEventListener('click', () => {
+                const startStr = startDateInput.value;
+                const endStr = endDateInput.value;
+
+                 if (startStr && endStr && new Date(startStr) > new Date(endStr)) {
+                    alert('Start date cannot be after end date.');
+                    return;
+                 }
+
+                selectedStartDate = startStr;
+                selectedEndDate = endStr;
+
+                const formattedStart = formatDate(startStr);
+                const formattedEnd = formatDate(endStr);
+
+                if (formattedStart && formattedEnd) openBtn.textContent = `${formattedStart} - ${formattedEnd} ▾`;
+                else if (formattedStart) openBtn.textContent = `From ${formattedStart} ▾`;
+                else if (formattedEnd) openBtn.textContent = `Until ${formattedEnd} ▾`;
+                else openBtn.textContent = 'Last 300 Days ▾';
+
+                updateCardsAndTrends(selectedStartDate, selectedEndDate);
+
+                if (typeof window.refreshAnalyticsCharts === 'function') {
+                    window.refreshAnalyticsCharts(selectedStartDate, selectedEndDate);
+                }
+                
+                if (typeof window.updateExportLink === 'function') {
+                    window.updateExportLink();
+                }
+
+                showPopup(false);
+            });
+
+        }
+
+        const today = new Date();
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(today.getDate() - 300);
+        const toISO = (date) => date.toISOString().split('T')[0];
+
+        selectedStartDate = toISO(thirtyDaysAgo);
+        selectedEndDate = toISO(today);
+
+        if (openBtn) {
+            const options = { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' };
+            openBtn.textContent = `${thirtyDaysAgo.toLocaleDateString('en-US', options)} - ${today.toLocaleDateString('en-US', options)} ▾`;
+        }
+        updateCardsAndTrends(selectedStartDate, selectedEndDate);
+
+        const initialStart = selectedStartDate;
+        const initialEnd = selectedEndDate;
+        refreshCharts(initialStart, initialEnd);
+
+        const exportButton = document.getElementById('export-button');
+        
+        window.updateExportLink = function() {
+            const startDate = window.selectedStartDate; 
+            const endDate = window.selectedEndDate;
+            let baseUrl = "{% url 'export_analytics_data' %}";
+
+            if (startDate && endDate) {
+                exportButton.href = `${baseUrl}?start_date=${startDate}&end_date=${endDate}`;
+            } else {
+                exportButton.href = baseUrl;
+            }
+        }
+        window.updateExportLink();
+
+        console.log('=== ANALYTICS SCRIPT END ===');
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- Export Link Update Function ---
+        const exportButton = document.getElementById('export-button');
+        
+        // Expose the update function globally for the date picker script to call after date change
+        window.updateExportLink = function() {
+            // Use global variables set by the main script
+            const startDate = window.selectedStartDate; 
+            const endDate = window.selectedEndDate;
+
+            let baseUrl = "{% url 'export_analytics_data' %}";
+
+            if (startDate && endDate) {
+                // Pass the dates as URL parameters to the export view
+                exportButton.href = `${baseUrl}?start_date=${startDate}&end_date=${endDate}`;
+            } else {
+                exportButton.href = baseUrl; // Let backend use default dates
+            }
+        }
+        
+        // Call it once on load to initialize the link
+        window.updateExportLink();
+        
+        console.log('=== ANALYTICS EXPORT LINK SCRIPT END ===');
+    });
+</script>
+
+</body>
+</html>
+{% endblock %}

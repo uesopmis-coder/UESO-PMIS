@@ -1,6 +1,6 @@
 {% extends "base_public.html" %}
 {% block content %}
-
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,199 +8,467 @@
 <title>Home</title>
 
 <link href="https://fonts.googleapis.com/css?family=Inter:400,700,800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css?family=Inter:400,700,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link href="{% static 'user/dash.css' %}" rel="stylesheet">
 
-<!-- Announcement Section -->
 <style>
-    .right-container {
-        display: flex;
+/* Notification Popup Styles */
+.notification-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+.notification-popup {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: hidden;
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.notification-header {
+    padding: 24px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.notification-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.notification-close:hover {
+    background: #f3f4f6;
+    color: #1f2937;
+}
+
+.notification-body {
+    padding: 16px 24px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.notification-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid #e5e7eb;
+}
+
+.notification-item:hover {
+    background: #e8f5e9;
+    border-color: #063A1C;
+    transform: translateX(4px);
+}
+
+.notification-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #063A1C 0%, #063A1C 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.notification-content {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.notification-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.notification-count {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #063A1C;
+    background: #c8e6c9;
+    padding: 4px 12px;
+    border-radius: 8px;
+    min-width: 40px;
+    text-align: center;
+}
+
+.notification-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: flex-end;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.notification-btn {
+    padding: 10px 24px;
+    background: #063A1C;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.notification-btn:hover {
+    background: #042a14;
+    transform: translateY(-1px);
+}
+
+.notification-note {
+    font-size: 12px;
+    color: #6b7280;
+    font-style: italic;
+    padding: 0 0 0 0;
+    text-align: center;
+}
+
+.google-flow-banner {
+    max-width: 1100px;
+    margin: 1.25rem auto 0;
+    border: 1px solid #B7E4C7;
+    background: linear-gradient(135deg, #F4FFF7 0%, #ECFDF3 100%);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    box-shadow: 0 8px 24px rgba(6, 58, 28, 0.08);
+}
+
+.google-flow-banner-copy {
+    color: #14532D;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.google-flow-banner-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #FFFFFF;
+    background: #166534;
+    border-radius: 999px;
+    padding: 8px 14px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.google-flow-banner-link:hover {
+    background: #14532D;
+    color: #FFFFFF;
+}
+
+@media (max-width: 768px) {
+    .google-flow-banner {
+        margin: 1rem;
+        align-items: flex-start;
         flex-direction: column;
-        gap: 20px;
-        flex: 1;
     }
+}
 
-    .announce-text {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 28px;
-    }
+/* Floating Pill Buttons */
+.floating-pill-btn {
+    position: fixed;
+    bottom: 40px;
+    right: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    background: #00681a;
+    color: white;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    z-index: 999;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-size: 14px;
+    font-weight: 600;
+}
 
-    .announce-box {
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-    }
+.floating-pill-btn:hover {
+    background: #042a14;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
 
-    .announce-item {
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
-        border: 0.7px solid #DDE1E6;
-    }
+.floating-pill-btn.show {
+    opacity: 1;
+    visibility: visible;
+}
 
-    .announce-pic {
-        background: #ECECEC;
-        height: 200px;
-        border-bottom: 0.7px solid #DDE1E6;
-    }
-
-    .announce-date {
-        padding: 20px 20px 20px 20px;
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-        font-size: 14px;
-        color: #E37910;
-    }
-
-    .announce-title {
-        padding: 0 20px 20px 20px;
-        font-family: 'Inter', sans-serif;
-        font-weight: 700;
-        font-size: 20px;
-        color: #625C56;
-    }
-
-    .announce-more {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 20px;
-        color: #2EA8FF;
-		text-decoration: none;
-        margin-top: 10px;
-        cursor: pointer;
-    }
-
-    .empty {
-        padding-top: 20px;
-        text-align: center;
-    }
+.floating-pill-btn.back-to-top {
+    padding: 12px 16px;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    justify-content: center;
+}
 </style>
-
-<!-- Left Section -->
-<style>
-    body {
-        background: #F9F9F9;
-        font-family: 'Inter', sans-serif;
-    }
-
-    .home-container {
-        display: flex;
-        flex-direction: row;
-        gap: 30px;
-        margin: 70px;
-    }
-
-    .left-container {
-        display: flex;
-        flex-direction: column;
-        gap: auto;
-        flex: 2;
-        justify-content: space-between;
-    }
-
-    .text-container {
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
-        margin-bottom: 2rem;
-    }
-
-    .top-text-container {
-        display: flex;
-        flex-direction: row;
-        gap: 15px;
-        align-items: center;
-    }
-
-    .top-text {
-        font-family: 'Inter', sans-serif;
-        font-weight: 800;
-        font-size: 48px;
-        background: linear-gradient(90deg, #F58924 0%, #1EC492 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        color: transparent;
-    }
-
-    .mid-text {
-        font-family: 'Inter', sans-serif;
-        font-weight: 700;
-        font-size: 48px;
-        color: #000;
-    }
-
-    .bottom-text {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 24px;
-    }
-
-    .project-container {
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-    }
-
-    .project-text {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 28px;
-    }
-
-    .project-box {
-        display: flex;
-        flex-direction: row;
-        gap: 35px;
-        background: #fff;
-        border: 1px solid #C3C3C3;
-        padding: 35px;
-        border-radius: 12px;
-    }
-
-    .project-item {
-        display: flex;
-        flex-direction: column;
-        gap: 25px;
-        width: 100%;
-    }
-
-    .project-pic {
-        background: #ECECEC;
-        height: 250px;
-        border-radius: 8px;
-    }
-
-    .project-title {
-        font-family: 'Inter', sans-serif;
-        font-weight: 700;
-        font-size: 18px;
-    }
-
-    .project-desc {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 18px;
-    }
-
-    .project-more {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 20px;
-        color: #2EA8FF;
-        margin-top: 10px;
-        cursor: pointer;
-    }
-</style>
-
-<!-- Faculty Exclusive Section -->
-<style>
-    .bottom-section {
-        margin: 0 70px;
-    }
-</style>
+</head>
 
 </head>
 <body>
+    {% if user.is_authenticated and needs_role_selection %}
+    <div class="google-flow-banner" role="status" aria-live="polite">
+        <div class="google-flow-banner-copy">Your Google account needs role selection before you can continue.</div>
+        <a class="google-flow-banner-link" href="{% url 'select_google_role' %}">
+            Select Role <i class="fa-solid fa-arrow-right"></i>
+        </a>
+    </div>
+    {% elif user.is_authenticated and needs_profile_completion %}
+    <div class="google-flow-banner" role="status" aria-live="polite">
+        <div class="google-flow-banner-copy">Your Google profile is incomplete. Please complete your profile to proceed.</div>
+        <a class="google-flow-banner-link" href="{% url 'complete_google_profile' %}">
+            Complete Profile <i class="fa-solid fa-arrow-right"></i>
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- View Reminders Pill and Notification Popup: Only show if there are actual reminders -->
+    {% with total1=notifications.pending_submissions|default:0|add:notifications.revision_submissions|default:0 %}
+    {% with total2=total1|add:notifications.rejected_submissions|default:0 %}
+    {% with total_reminders=total2|add:notifications.overdue_submissions|default:0 %}
+    {% if total_reminders|add:0 > 0 and user.is_authenticated and user.role in FACULTY_ROLES %}
+        <button id="viewRemindersBtn" class="floating-pill-btn">
+            <i class="fa-solid fa-bell"></i> View Reminders
+        </button>
+        <!-- Notification Popup (hidden by default, only shown by flag or pill) -->
+        <div id="notificationPopup" class="notification-popup-overlay" style="display:none;">
+            <div class="notification-popup">
+                <div class="notification-header">
+                    <h2>Pending Items</h2>
+                    <button class="notification-close" onclick="closeNotificationPopup()">&times;</button>
+                </div>
+                <div class="notification-body">
+                    {% if notifications.pending_submissions > 0 %}
+                    <div class="notification-item" onclick="toggleReminderDropdown('dropdownPendingSubmissions', event)">
+                        <div class="notification-icon"><i class="fa-solid fa-hourglass-half"></i></div>
+                        <div class="notification-content">
+                            <div class="notification-title">Pending Submissions</div>
+                            <div class="notification-count">{{ notifications.pending_submissions }}</div>
+                        </div>
+                    </div>
+                    <div id="dropdownPendingSubmissions" style="display:none; margin-left: 44px;">
+                        {% for sub in pending_submissions_list %}
+                            <a href="{% url 'project_submissions_details' sub.project.id sub.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="notification-item" style="margin-top: 10px;">
+                                    <div class="notification-content">
+                                        <div class="notification-title">{{ sub.project.title }} — {{ sub.downloadable.name }}</div>
+                                    </div>
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if notifications.revision_submissions > 0 %}
+                    <div class="notification-item" onclick="toggleReminderDropdown('dropdownRevisionSubmissions', event)">
+                        <div class="notification-icon"><i class="fa-solid fa-file-pen"></i></div>
+                        <div class="notification-content">
+                            <div class="notification-title">Revision Requested</div>
+                            <div class="notification-count">{{ notifications.revision_submissions }}</div>
+                        </div>
+                    </div>
+                    <div id="dropdownRevisionSubmissions" style="display:none; margin-left: 44px;">
+                        {% for sub in revision_submissions_list %}
+                            <a href="{% url 'project_submissions_details' sub.project.id sub.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="notification-item" style="margin-top: 10px;">
+                                    <div class="notification-content">
+                                        <div class="notification-title">{{ sub.project.title }} — {{ sub.downloadable.name }}</div>
+                                    </div>
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if notifications.rejected_submissions > 0 %}
+                    <div class="notification-item" onclick="toggleReminderDropdown('dropdownRejectedSubmissions', event)">
+                        <div class="notification-icon"><i class="fa-solid fa-circle-xmark"></i></div>
+                        <div class="notification-content">
+                            <div class="notification-title">Rejected Submissions</div>
+                            <div class="notification-count">{{ notifications.rejected_submissions }}</div>
+                        </div>
+                    </div>
+                    <div id="dropdownRejectedSubmissions" style="display:none; margin-left: 44px;">
+                        {% for sub in rejected_submissions_list %}
+                            <a href="{% url 'project_submissions_details' sub.project.id sub.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="notification-item" style="margin-top: 10px;">
+                                    <div class="notification-content">
+                                        <div class="notification-title">{{ sub.project.title }} — {{ sub.downloadable.name }}</div>
+                                    </div>
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if notifications.overdue_submissions > 0 %}
+                    <div class="notification-item" onclick="toggleReminderDropdown('dropdownOverdueSubmissions', event)">
+                        <div class="notification-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                        <div class="notification-content">
+                            <div class="notification-title">Overdue Submissions</div>
+                            <div class="notification-count">{{ notifications.overdue_submissions }}</div>
+                        </div>
+                    </div>
+                    <div id="dropdownOverdueSubmissions" style="display:none; margin-left: 44px;">
+                        {% for sub in overdue_submissions_list %}
+                            <a href="{% url 'project_submissions_details' sub.project.id sub.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="notification-item" style="margin-top: 10px;">
+                                    <div class="notification-content">
+                                        <div class="notification-title">{{ sub.project.title }} — {{ sub.downloadable.name }}</div>
+                                    </div>
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Stat Cards Popup (Reminder-style) -->
+        <div id="statPopup" class="notification-popup-overlay" style="display:none;">
+            <div class="notification-popup">
+                <div class="notification-header">
+                    <h2 id="statPopupTitle">Details</h2>
+                    <button class="notification-close" onclick="closeStatPopup()">&times;</button>
+                </div>
+                <div class="notification-body">
+                    <div id="statSectionPendingSubmissions" data-stat-section style="display:none;">
+                        {% for sub in pending_submissions_list %}
+                            <a href="{% url 'project_submissions_details' sub.project.id sub.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="notification-item" style="margin-top: 10px;">
+                                    <div class="notification-content">
+                                        <div class="notification-title">{{ sub.project.title }} — {{ sub.downloadable.name }}</div>
+                                    </div>
+                                </div>
+                            </a>
+                        {% endfor %}
+                        {% for sub in revision_submissions_list %}
+                            <a href="{% url 'project_submissions_details' sub.project.id sub.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="notification-item" style="margin-top: 10px;">
+                                    <div class="notification-content">
+                                        <div class="notification-title">{{ sub.project.title }} — {{ sub.downloadable.name }}</div>
+                                    </div>
+                                </div>
+                            </a>
+                        {% endfor %}
+                        {% if not pending_submissions_list and not revision_submissions_list %}
+                            <div class="no-data">No items at this time</div>
+                        {% endif %}
+                    </div>
+
+                    <div id="statSectionOngoingProjects" data-stat-section style="display:none;">
+                        {% for p in ongoing_projects_list %}
+                            <a href="{% url 'project_overview' p.id %}" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="notification-item" style="margin-top: 10px;">
+                                    <div class="notification-content">
+                                        <div class="notification-title">{{ p.title }}</div>
+                                    </div>
+                                </div>
+                            </a>
+                        {% empty %}
+                            <div class="no-data">No items at this time</div>
+                        {% endfor %}
+                    </div>
+
+                    <div id="statSectionUpcomingMeetings" data-stat-section style="display:none;">
+                        {% for m in upcoming_meetings_list %}
+                            <a href="{% url 'calendar' %}" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="notification-item" style="margin-top: 10px;">
+                                    <div class="notification-content">
+                                        <div class="notification-title">{{ m.title|default:'Meeting' }} — {{ m.datetime|date:"M d, Y h:i A" }}</div>
+                                    </div>
+                                </div>
+                            </a>
+                        {% empty %}
+                            <div class="no-data">No items at this time</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+    {% endwith %}
+    {% endwith %}
+    {% endwith %}
+    <!-- Back to Top Button -->
+    <button id="backToTopBtn" class="floating-pill-btn back-to-top">
+        <i class="fa-solid fa-arrow-up"></i>
+    </button>
+    
     <div class="home-container">
         <!-- Left Container (Public & Client) -->
         
@@ -226,44 +494,106 @@
             <!-- Project Container -->
             <div class="project-container">
                 <div class="project-text">Latest Extension Projects</div>
-
+                {% if public__project_image %}
                 <div class="project-box">
-                    {% for project in public_projects|slice:":2" %}
-                    <div class="project-item">
-                        <div class="project-pic">
-                            {% if project.image_url %}
+                    {% for project in public__project_image %}
+                    <a href="{% url 'project_overview' project.id %}" style="text-decoration:none;color:inherit;display:block;">
+                        <div class="project-item">
+                            <div class="project-pic">
                                 <img src="{{ project.image_url }}" alt="Project Event Image" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" />
-                            {% endif %}
+                            </div>
+                            <div class="project-details">
+                                <div class="project-title">{{ project.title }}</div>
+                                <div class="project-desc">{{ project.agenda }}</div>
+                            </div>
                         </div>
-                        <div class="project-details">
-                            <div class="project-title">{{ project.title }}</div>
-                            <div class="project-desc">{{ project.agenda }}</div>
-                        </div>
-                    </div>
-                    {% empty %}
-                    <style>.project-box{ justify-content: center; }</style>
-                    <div class="announce-title empty">No Projects Found</div>
+                    </a>
                     {% endfor %}
                 </div>
-                <!-- <div class="project-more">View More Project →</div> -->
+                {% else %}
+                <div class="no-data" style="background:#fff;border:1px solid #E0E0E0;border-radius:12px;padding:40px;">No completed projects found</div>
+                {% endif %}
             </div>
             {% endif %}
 
             <!-- Left Container (Faculty) -->
             {% if user.role in FACULTY_ROLES %}
-            <div> <!-- Tile Card Container -->
-                <div> <!-- Tile Cards -->
+            <!-- Stat Cards -->
+            <div class="stat-cards-container">
+                <div class="stat-card" id="statCardPendingSubmissions" style="cursor:pointer;">
+                    <div class="stat-card-number">{{ pending_submissions_count }}</div>
+                    <div class="stat-card-label">Pending Submissions</div>
+                </div>
+                <div class="stat-card" id="statCardOngoingProjects" style="cursor:pointer;">
+                    <div class="stat-card-number">{{ ongoing_projects_count }}</div>
+                    <div class="stat-card-label">Ongoing Projects</div>
+                </div>
+                <div class="stat-card" id="statCardUpcomingMeetings" style="cursor:pointer;">
+                    <div class="stat-card-number">{{ upcoming_meetings_count }}</div>
+                    <div class="stat-card-label">Upcoming Meetings</div>
                 </div>
             </div>
 
-            <div> <!-- Container (Justify Content : Space Between) -->
-                <div> <!-- My Alerts -->
+            <!-- Alerts and Calendar Container -->
+            <div class="alerts-calendar-container">
+                <!-- My Alerts -->
+                <div class="alerts-container">
+                    <div class="alerts-title">My Alerts</div>
+                    {% if my_alerts %}
+                        {% for alert in my_alerts %}
+                        <div class="alert-item" onclick="window.location.href='{% url 'project_profile' alert.project.id %}'">
+                            <div class="alert-project">{{ alert.project.title }}</div>
+                            <div class="alert-status">
+                                {% if alert.status == 'PROJECT_ASSIGNED' %}
+                                    You have been assigned to this project
+                                {% elif alert.status == 'PENDING' %}
+                                    New submission required
+                                {% elif alert.status == 'FORWARDED' %}
+                                    Submission has been forwarded to UESO
+                                {% elif alert.status == 'APPROVED' %}
+                                    Submission has been approved
+                                {% elif alert.status == 'REJECTED' %}
+                                    Submission has been rejected
+                                {% elif alert.status == 'REVISION_REQUESTED' %}
+                                    Submission requires revision
+                                {% else %}
+                                    {{ alert.status|title }}
+                                {% endif %}
+                            </div>
+                            <div class="alert-date">{{ alert.updated_at|date:"M d, Y - h:i A" }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="no-data">No alerts at this time</div>
+                    {% endif %}
                 </div>
 
-                <div> <!-- Calendar -->
+                <!-- Calendar/Upcoming Events -->
+                <div class="calendar-container">
+                    <div class="mini-calendar-header">
+                        <button class="prev-month" title="Previous Month">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        
+                        <span class="current-month-year">Loading...</span>
+                        
+                        <button class="next-month" title="Next Month">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+
+                    <div class="mini-calendar-body">
+                        <div class="weekdays">
+                            <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                        </div>
+                        
+                        <div class="days-grid">
+                            </div>
+                    </div>
                 </div>
             </div>
             {% endif %}
+
         </div>
         
 
@@ -275,9 +605,7 @@
 				<div class="announce-item">
 					<a href="{% url 'announcement_details' announcement.id %}" style="text-decoration:none;color:inherit;display:block;">
 						<div class="announce-pic">
-							{% if announcement.cover_photo %}
-								<img src="{{ announcement.cover_photo.url }}" alt="Cover Photo" style="width:100%;height:100%;object-fit:cover;" />
-							{% endif %}
+							<img src="{{ announcement.get_cover_photo_url }}" alt="Cover Photo" style="width:100%;height:100%;object-fit:cover;" />
 						</div>
 						<div class="announce-details">
 							<div class="announce-date">{{ announcement.published_at|date:"F d, Y" }}</div>
@@ -294,31 +622,285 @@
         </div>
     </div>
     
-
-    <!-- Project Container -->
-    {% if user.role in FACULTY_ROLES %}
-    <div class="bottom-section">
-        <div class="project-container">
-            <div class="project-text">Latest Extension Projects</div>
-            <div class="project-box">
-                {% for project in faculty_projects|slice:":2" %}
-                <div class="project-item">
-                    <div class="project-pic">
-                        {% if project.image_url %}
-                            <img src="{{ project.image_url }}" alt="Project Event Image" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" />
-                        {% endif %}
-                    </div>
-                    <div class="project-details">
-                        <div class="project-title">{{ project.title }}</div>
-                        <div class="project-desc">{{ project.agenda }}</div>
-                    </div>
+<!-- Project Container -->
+{% if user.role in FACULTY_ROLES %}
+<div class="project-container">
+    <div class="project-text">Latest Extension Projects</div>
+    {% if faculty_projects_image %}
+    <div class="project-box">
+        {% for project in faculty_projects_image %}
+        <a href="{% url 'project_overview' project.id %}" style="text-decoration:none;color:inherit;display:block;">
+            <div class="project-item">
+                <div class="project-pic">
+                    <img src="{{ project.image_url }}" alt="Project Event Image" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" />
                 </div>
-                {% endfor %}
+                <div class="project-details">
+                    <div class="project-title">{{ project.title }}</div>
+                    <div class="project-desc">{{ project.agenda }}</div>
+                </div>
             </div>
-            <div class="project-more">View More Project →</div>
-        </div>
+        </a>
+        {% endfor %}
     </div>
+    <a href="{% url 'project_dispatcher' %}" class="project-more" style="text-decoration:none;">View More Projects →</a>
+    {% else %}
+    <div class="no-data" style="background:#fff;border:1px solid #E0E0E0;border-radius:12px;padding:40px;">No completed projects found</div>
     {% endif %}
+</div>
+{% endif %}
+    
+<script>
+    // Notification Popup Logic
+    function closeNotificationPopup() {
+        const popup = document.getElementById('notificationPopup');
+        if (popup) {
+            popup.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => {
+                popup.style.display = 'none';
+            }, 300);
+        }
+    }
+
+    function closeStatPopup() {
+        const popup = document.getElementById('statPopup');
+        if (popup) {
+            popup.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => {
+                popup.style.display = 'none';
+            }, 300);
+        }
+    }
+
+    function openStatPopup(title, contentId) {
+        const popup = document.getElementById('statPopup');
+        const titleEl = document.getElementById('statPopupTitle');
+        if (!popup || !titleEl) return;
+
+        titleEl.textContent = title;
+        const sections = popup.querySelectorAll('[data-stat-section]');
+        sections.forEach(sec => { sec.style.display = 'none'; });
+        const target = document.getElementById(contentId);
+        if (target) target.style.display = 'block';
+
+        popup.style.display = 'flex';
+        popup.style.animation = 'fadeIn 0.3s ease';
+    }
+
+    function toggleReminderDropdown(dropdownId, ev) {
+        if (ev) ev.stopPropagation();
+        const dropdown = document.getElementById(dropdownId);
+        if (!dropdown) return;
+        const isOpen = dropdown.style.display === 'block';
+        dropdown.style.display = isOpen ? 'none' : 'block';
+    }
+    
+    function openNotificationPopup() {
+        const popup = document.getElementById('notificationPopup');
+        if (popup) {
+            popup.style.display = 'flex';
+            popup.style.animation = 'fadeIn 0.3s ease';
+        }
+    }
+    
+    // Show popup only when coming from login (flag) or when View Reminders is clicked
+    document.addEventListener('DOMContentLoaded', function() {
+        const popup = document.getElementById('notificationPopup');
+        const statPopup = document.getElementById('statPopup');
+        const viewRemindersBtn = document.getElementById('viewRemindersBtn');
+        const backToTopBtn = document.getElementById('backToTopBtn');
+
+        const statCardPending = document.getElementById('statCardPendingSubmissions');
+        const statCardOngoing = document.getElementById('statCardOngoingProjects');
+        const statCardMeetings = document.getElementById('statCardUpcomingMeetings');
+
+        // Helper: check if there are any notification items
+        function hasReminders() {
+            return popup && popup.querySelector('.notification-item') !== null;
+        }
+
+        // Only show popup automatically ONCE if flag is set (from login/quick-login)
+        let popupAutoShown = false;
+        if (popup && hasReminders()) {
+            const showFromContext = "{{ show_notifications|yesno:'true,false' }}" === "true";
+            const urlParams = new URLSearchParams(window.location.search);
+            const showFromUrl = urlParams.get('reminders') === '1';
+            
+            if (showFromContext || showFromUrl) {
+                popup.style.display = 'flex';
+                popupAutoShown = true;
+                // Click outside to close (on overlay)
+                popup.addEventListener('mousedown', function(e) {
+                    if (e.target === popup) {
+                        closeNotificationPopup();
+                    }
+                });
+                // Remove the URL parameter to avoid showing again on refresh
+                if (showFromUrl) {
+                    const newUrl = window.location.pathname + window.location.hash;
+                    window.history.replaceState({}, document.title, newUrl);
+                }
+            } else {
+                popup.style.display = 'none';
+            }
+        }
+
+        // Always allow clicking overlay to close popup
+        if (popup) {
+            popup.addEventListener('mousedown', function(e) {
+                if (e.target === popup) {
+                    closeNotificationPopup();
+                }
+            });
+        }
+
+        if (statPopup) {
+            statPopup.addEventListener('mousedown', function(e) {
+                if (e.target === statPopup) {
+                    closeStatPopup();
+                }
+            });
+        }
+
+        if (statCardPending) {
+            statCardPending.addEventListener('click', function() {
+                openStatPopup('Pending Submissions', 'statSectionPendingSubmissions');
+            });
+        }
+        if (statCardOngoing) {
+            statCardOngoing.addEventListener('click', function() {
+                openStatPopup('Ongoing Projects', 'statSectionOngoingProjects');
+            });
+        }
+        if (statCardMeetings) {
+            statCardMeetings.addEventListener('click', function() {
+                openStatPopup('Upcoming Meetings', 'statSectionUpcomingMeetings');
+            });
+        }
+
+        // View Reminders pill logic
+        if (viewRemindersBtn) {
+            viewRemindersBtn.addEventListener('click', function() {
+                if (popup && hasReminders()) {
+                    popup.style.display = 'flex';
+                    popup.style.animation = 'fadeIn 0.3s ease';
+                }
+            });
+            function toggleViewReminders() {
+                const reminders = hasReminders();
+                const scrolled = window.scrollY > 300;
+                if (reminders) {
+                    if (scrolled) {
+                        viewRemindersBtn.classList.remove('show');
+                        if (backToTopBtn) backToTopBtn.classList.add('show');
+                    } else {
+                        viewRemindersBtn.classList.add('show');
+                        if (backToTopBtn) backToTopBtn.classList.remove('show');
+                    }
+                } else {
+                    viewRemindersBtn.classList.remove('show');
+                }
+            }
+            window.addEventListener('scroll', toggleViewReminders);
+            toggleViewReminders();
+        }
+        if (backToTopBtn) {
+            backToTopBtn.addEventListener('click', function() {
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+            });
+        }
+    });
+    
+    const EVENTS_DATA = JSON.parse(`{{ events_json|default:'{}'|escapejs }}`);
+    
+    // The rest of the calendar script goes here:
+    
+    (function() {
+        // Use a set for quick date lookup
+        const eventDates = new Set();
+        if (EVENTS_DATA && typeof EVENTS_DATA === 'object') {
+            Object.keys(EVENTS_DATA).forEach(date => eventDates.add(date));
+        }
+
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        let currentDate = new Date();
+
+        const headerEl = document.querySelector('.current-month-year');
+        const daysGridEl = document.querySelector('.days-grid');
+        const prevButton = document.querySelector('.prev-month');
+        const nextButton = document.querySelector('.next-month');
+        
+        function renderCalendar() {
+            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getMonth();
+            
+            headerEl.textContent = `${monthNames[currentMonth]} ${currentYear}`;
+            daysGridEl.innerHTML = ''; 
+
+            const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0 (Sun) - 6 (Sat)
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            const today = new Date();
+            
+            // Render empty cells for preceding month days
+            for (let i = 0; i < firstDayOfMonth; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.classList.add('day-cell', 'empty-day');
+                daysGridEl.appendChild(emptyCell);
+            }
+
+            // Render days of the month
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayCell = document.createElement('div');
+                dayCell.classList.add('day-cell');
+                dayCell.textContent = day;
+
+                const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                
+                // Mark today's date
+                if (currentYear === today.getFullYear() && currentMonth === today.getMonth() && day === today.getDate()) {
+                    dayCell.classList.add('today');
+                }
+                
+                // Mark event dates
+                if (eventDates.has(dateString)) {
+                    dayCell.classList.add('has-event');
+                    // Add an invisible link/data for utility, pointing to the full calendar view
+                    dayCell.setAttribute('data-event-date', dateString);
+                    dayCell.title = "Events scheduled today. Click for full calendar."
+                }
+                
+                // Navigation to the full calendar view (assuming URL is /calendar/)
+                dayCell.addEventListener('click', () => {
+                     if (!dayCell.classList.contains('empty-day')) {
+                        const targetDate = dayCell.getAttribute('data-event-date') || dateString;
+                        window.location.href = `/calendar/?date=${targetDate}`;
+                     }
+                });
+
+
+                daysGridEl.appendChild(dayCell);
+            }
+        }
+
+        prevButton.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
+        });
+
+        nextButton.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        });
+
+        // Initial render
+        renderCalendar();
+    })();
+
+</script>
+
+
 </body>
 </html>
 

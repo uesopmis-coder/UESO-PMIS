@@ -1,6 +1,6 @@
 {% extends "base_internal.html" %}
 {% block content %}
-
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,463 +8,57 @@
 <title>Exports</title>
 
 <link href="https://fonts.googleapis.com/css?family=Inter:400,500,700&display=swap" rel="stylesheet">
-
-<!-- Top Section -->
-<style>
-    body {
-        background: #F9F9F9;
-        margin: 0;
-        font-family: 'Inter', sans-serif;
-    }
-
-    .main-container {
-        margin: 60px;
-        display: flex;
-        flex-direction: column;
-        gap: 30px;
-    }
-
-    .container-a {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .text-sort-container {
-        display: flex;
-        flex-direction: row;
-        gap: 60px;
-        align-items: center;
-    }
-
-    .export-text {
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-        font-size: 32px;
-        color: #000000;
-    }
-
-    .button-container {
-        display: flex;
-        flex-direction: row;
-        gap: 20px;
-        align-items: center;
-    }
-
-    .add-user-btn {
-        background: #063A1C;
-        color: white;
-        padding: 15px 45px;
-        border-radius: 8px;
-        font-size: 20px;
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        box-shadow: 0 2px 8px rgba(10, 108, 68, 0.2);
-        text-decoration: none;
-        border-radius: 18px;
-        cursor: pointer;
-        transition: background 0.2s;
-        border: none;
-    }
-
-    .add-user-btn:hover {
-        background: #04521c;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(10, 108, 68, 0.3);
-        text-decoration: none;
-        color: white;
-    }
-    
-    .export-btn {
-        background: #00538E;
-        color: white;
-        padding: 15px 45px;
-        border-radius: 8px;
-        font-size: 20px;
-        font-family: 'Inter', sans-serif;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        box-shadow: 0 2px 8px rgba(0, 83, 142, 0.2); 
-        text-decoration: none;
-        border-radius: 18px;
-        cursor: pointer;
-        transition: background 0.2s;
-        border: none;
-    }
-
-    .export-btn:hover {
-        background: #003f66;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 83, 142, 0.3);
-        text-decoration: none;
-        color: white;
-    }
-</style>
-
-<!-- Table Section -->
-<style>
-    .name-link {
-        color:#0A6C44;
-        text-decoration:underline;
-    }
-
-    .checkmark-icon {
-        color:#1f7c57;
-        font-size:1.2em;
-        text-align: center;
-    }
-
-    .crossmark-icon {
-        color:#E53E3E;
-        font-size:1.2em;
-        text-align: center;
-    }
-
-    .user-table {
-        width: 100%;
-        border-collapse: collapse;
-        background: #FEFCFC;
-        border: 1px solid rgba(0,0,0,0.18);
-    }
-
-    .user-table th {
-        font-size: 14px;
-        font-weight: 500;
-        background: rgba(217, 217, 217, 0.2);
-        border-bottom: 1px solid rgba(0,0,0,0.18);
-        padding: 14px 12px;
-        text-align: left;
-        font-family: 'Inter', Arial, sans-serif;
-    }
-
-    .user-table td {
-        font-size: 13px;
-        font-weight: 400;
-        border: none;
-        border-bottom: 1px solid rgba(0,0,0,0.18);
-        padding: 14px 12px;
-        text-align: left;
-        font-family: 'Inter', Arial, sans-serif;
-    }
-
-    .user-table tr:last-child td {
-        border-bottom: none;
-    }
-
-    .settings-icon {
-        width: 16px;
-        height: 16px;
-        align-items: center;
-        justify-content: center;
-        display: inline-block;
-        vertical-align: middle;
-        cursor: pointer;
-        margin-top: 10px;
-    }
-
-    .user-table th.settings-col, .user-table td.settings-col {
-        text-align: center !important;
-    }
-
-    .action-col {
-        text-align: center !important;
-    }
-
-    .action-btn {
-        background: none;
-        border: none;
-        padding: 6px 10px;
-        margin: 0 2px;
-        font-size: 1.1em;
-        cursor: pointer;
-        transition: background 0.15s;
-        border-radius: 6px;
-        font-family: 'Inter', Arial, sans-serif;
-    }
-
-    .action-btn:disabled {
-        cursor: not-allowed;
-        opacity: 0.9;
-    }
-
-    .approve-btn {
-        background: #D1F5E3;
-        color: #1f7c57;
-    }
-
-    .approve-btn:hover {
-        background: #e6f7ed;
-    }
-
-    .reject-btn {
-        background: #FEE2E2;
-        color: #E53E3E;
-    }
-
-    .reject-btn:hover {
-        background: #fdeaea;
-    }
-</style>
-
-<!-- Search Bar Styles -->
-<style>
-	.search-container {
-		width: 100%;
-		display: flex;
-		gap: 10px;
-	}
-
-	.search-bar {
-		width: 100%;
-		height: 52px;
-		background: #F2F4F8;
-		display: flex;
-		align-items: center;
-		padding: 0 16px;
-		border-bottom: 1.09px solid #535353;
-		border-radius: 8px;
-		box-sizing: border-box;
-	}
-
-	.search-bar input {
-		flex: 1;
-		border: none;
-		outline: none;
-		background: transparent;
-		font-size: 18px;
-		font-family: 'Inter', sans-serif;
-		font-weight: 400;
-		color: #5A5252;
-		padding: 0 10px;
-	}
-</style>
-
-<!-- Sort/Filter Styles -->
-<style>
-	.filter-dropdown {
-		display: none;
-		position: absolute;
-		top: 280px;
-		right: 60px;
-		z-index: 1000;
-		background: white;
-		border: 1px solid #e5e7eb;
-		border-radius: 12px;
-		box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-		padding: 24px 32px;
-		min-width: 340px;
-	}
-
-    .filter-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        grid-template-rows: repeat(2, 1fr);
-        grid-gap: 24px;
-    }
-
-	.filter-dropdown label {
-		font-weight: 500;
-		color: #374151;
-		display: flex;
-		flex-direction: column;
-	}
-
-	.filter-dropdown select,
-	.filter-dropdown input[type="date"] {
-		width: 150px;
-		margin-top: 6px;
-		border: 1px solid #e5e7eb;
-		border-radius: 6px;
-		padding: 6px 10px;
-		font-size: 15px;
-		font-family: 'Inter', Arial, sans-serif;
-		background: #f9f9f9;
-		color: #374151;
-	}
-
-	.filter-dropdown select {
-		appearance: none;
-		-webkit-appearance: none;
-		-moz-appearance: none;
-		padding-right: 2rem;
-		background: url("data:image/svg+xml;utf8,<svg width='16' height='11' viewBox='0 0 16 11' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M7.99976 7.19417L13.9025 1.29147C14.0125 1.17758 14.144 1.08674 14.2895 1.02424C14.435 0.961746 14.5915 0.92885 14.7498 0.927474C14.9082 0.926098 15.0652 0.95627 15.2117 1.01623C15.3583 1.07619 15.4914 1.16473 15.6034 1.27669C15.7153 1.38866 15.8039 1.5218 15.8638 1.66835C15.9238 1.8149 15.954 1.97192 15.9526 2.13026C15.9512 2.28859 15.9183 2.44506 15.8558 2.59055C15.7933 2.73604 15.7025 2.86762 15.5886 2.97762L8.84283 9.72339C8.61921 9.94694 8.31596 10.0725 7.99976 10.0725C7.68356 10.0725 7.38031 9.94694 7.15669 9.72339L0.41092 2.97762C0.297028 2.86762 0.206183 2.73604 0.143687 2.59055C0.0811915 2.44506 0.0482959 2.28859 0.04692 2.13026C0.0455441 1.97192 0.0757155 1.8149 0.135674 1.66835C0.195632 1.5218 0.284176 1.38866 0.39614 1.27669C0.508103 1.16473 0.641244 1.07619 0.787794 1.01623C0.934343 0.95627 1.09137 0.926098 1.2497 0.927474C1.40804 0.92885 1.56451 0.961746 1.71 1.02424C1.85548 1.08674 1.98706 1.17758 2.09706 1.29147L7.99976 7.19417Z' fill='%23374151'/></svg>")
-        		no-repeat right 0.75rem center;
-  		background-size: 13px 8px;
-	}
-
-	.filter-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 10px;
-		margin-top: 24px;
-	}
-
-	.filter-apply {
-		background: #063A1C;
-		color: white;
-		padding: 10px 28px;
-		border-radius: 8px;
-		font-size: 16px;
-		font-family: 'Inter', Arial, sans-serif;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background 0.2s;
-		border: none;
-	}
-
-	.filter-close {
-		background: #e5e7eb;
-		color: #374151;
-		padding: 10px 18px;
-		border-radius: 8px;
-		font-size: 16px;
-		font-family: 'Inter', Arial, sans-serif;
-		font-weight: 500;
-		cursor: pointer;
-		border: none;
-	}
-</style>
-
-<!-- Pagination Styles -->
-<style>
-	.pagination-container {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		margin-top: 3rem;
-		gap: 0.5rem;
-	}
-
-	.pagination-button {
-		padding: 0.75rem 1rem;
-		border: 1px solid #E5E7EB;
-		background: white;
-		color: #4B5563;
-		border-radius: 8px;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		font-weight: 500;
-		text-decoration: none;
-	}
-
-	.pagination-button:hover {
-		background: #F3F4F6;
-		border-color: #0A6C44;
-		color: #0A6C44;
-	}
-
-	.pagination-button.active {
-		background: #0A6C44;
-		color: white;
-		border-color: #0A6C44;
-	}
-
-	.pagination-button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.page-info {
-		margin: 0 1rem;
-		color: #4B5563;
-		font-weight: 500;
-	}
-
-	@media (max-width: 900px) {
-		.announce-grid {
-			grid-template-columns: 1fr;
-		}
-		
-		.announce-container {
-			padding: 1rem;
-		}
-
-		.announce-title {
-			font-size: 2rem;
-		}
-
-		.pagination-container {
-			flex-wrap: wrap;
-			gap: 0.25rem;
-		}
-
-		.pagination-button {
-			padding: 0.5rem 0.75rem;
-			font-size: 0.875rem;
-		}
-	}
-</style>
-
-<!-- Settings Dropdown Styles -->
-<style>
-    .settings-dropdown-container {
-        position: relative;
-        display: inline-block;
-        overflow: visible;
-    }
-
-    .settings-dropdown-toggle {
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 0;
-    }
-
-    .settings-dropdown-menu {
-        display: none;
-        position: absolute;
-        right: 0;
-        top: 28px;
-        min-width: 160px;
-        background: #fff;
-        border: 1px solid #E5E7EB;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        z-index: 10;
-    }
-
-    .settings-dropdown-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 10px 18px;
-        text-decoration: none;
-        font-size: 1rem;
-    }
-
-    .settings-dropdown-item:hover {
-        background: #F3F4F6;
-    }
-</style>
-
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link href="{% static 'shared/projects/a_module_styles.css' %}" rel="stylesheet">
 </head>
 <body>
 	<div class="main-container">
-        <!-- Top Section -->
-		<div class="container-a">
-            <div class="text-sort-container">
-                <div class="export-text">Exports</div>
+        <!-- Django Messages -->
+        {% if messages %}
+        <div style="position:fixed;top:20px;right:20px;z-index:10000;max-width:400px;">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}" style="background:{% if message.tags == 'success' %}#10b981{% elif message.tags == 'error' %}#ef4444{% else %}#3b82f6{% endif %};color:white;padding:1rem 1.5rem;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);margin-bottom:0.5rem;display:flex;align-items:center;gap:0.75rem;animation:slideIn 0.3s ease;">
+                <i class="fa-solid {% if message.tags == 'success' %}fa-check-circle{% elif message.tags == 'error' %}fa-exclamation-circle{% else %}fa-info-circle{% endif %}" style="font-size:1.5rem;"></i>
+                <div style="flex:1;">{{ message }}</div>
+                <button onclick="this.parentElement.remove()" style="background:none;border:none;color:white;font-size:1.25rem;cursor:pointer;opacity:0.8;padding:0;margin:0;line-height:1;">&times;</button>
             </div>
-		</div>
+            {% endfor %}
+        </div>
+        <style>
+            @keyframes slideIn {
+                from { transform: translateX(400px); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            .alert { animation: slideIn 0.3s ease; }
+        </style>
+        <script>
+            // Auto-hide messages after 5 seconds
+            setTimeout(function() {
+                document.querySelectorAll('.alert').forEach(function(alert) {
+                    alert.style.opacity = '0';
+                    alert.style.transition = 'opacity 0.3s';
+                    setTimeout(function() { alert.remove(); }, 300);
+                });
+            }, 5000);
+        </script>
+        {% endif %}
+        
+        <!-- Top Section -->
 
-        <!-- Search Bar & Filter (4x2 Grid) -->
+        <!-- Search Bar & Filter (3x2 Grid) -->
         <div class="search-container">
             <form class="search-bar" method="get" action="">
-                <svg width="20" height="20"> <use href="#icon-search"></use> </svg>
-                <input type="text" name="search" placeholder="Search by submitter name..." value="{{ search|default:'' }}"/>
+                <svg width="16" height="16" style="margin-right:10px;"> <use href="#icon-search"></use> </svg>
+                <input type="text" name="search" placeholder="Search Export Type" value="{{ search|default:'' }}"/>
                 <button type="button" id="filterBtn" style="background:none;border:none;padding:0;margin-right:5px;cursor:pointer;">
-                    <svg width="20" height="20"> <use href="#icon-filter"></use> </svg>
+                    <svg width="16" height="16"> <use href="#icon-filter"></use> </svg>
                 </button>
                 <div id="filterDropdown" class="filter-dropdown">
-                    <div class="filter-grid" style="grid-template-columns: repeat(2, 1fr); grid-template-rows: 1fr;">
+                    <div class="filter-grid">
                         <label>Sort By
                             <select name="sort_by">
                                 <option value="type" {% if sort_by == 'type' %}selected{% endif %}>Type</option>
-                                <option value="submitted_at" {% if sort_by == 'submitted_at' %}selected{% endif %}>Date Submitted</option>
-                                <option value="submitted_by" {% if sort_by == 'submitted_by' %}selected{% endif %}>Submitted By</option>
+                                <option value="date_submitted" {% if sort_by == 'date_submitted' %}selected{% endif %}>Date Submitted</option>
                                 <option value="status" {% if sort_by == 'status' %}selected{% endif %}>Status</option>
                             </select>
                         </label>
@@ -472,6 +66,14 @@
                             <select name="order">
                                 <option value="asc" {% if order == 'asc' %}selected{% endif %}>Ascending</option>
                                 <option value="desc" {% if order == 'desc' %}selected{% endif %}>Descending</option>
+                            </select>
+                        </label>
+                        <label>Type
+                            <select name="type">
+                                <option value="">All Types</option>
+                                {% for t in all_types %}
+                                <option value="{{ t.0 }}" {% if export_type == t.0 %}selected{% endif %}>{{ t.1 }}</option>
+                                {% endfor %}
                             </select>
                         </label>
                         <label>Status
@@ -482,17 +84,31 @@
                                 {% endfor %}
                             </select>
                         </label>
-                        <label>Date
-                            <input type="date" name="date" value="{{ date|default:'' }}" style="width: 87%"/>
-                        </label>
+						<!-- Date From -->
+						<label style="font-weight:500;color:#374151;display:flex;flex-direction:column;">
+							Date From
+							<input type="date" name="date_from" value="{{ date_from|default:'' }}" style="width:100%;margin-top:6px;" />
+						</label>
+
+						<!-- Date To -->
+						<label style="font-weight:500;color:#374151;display:flex;flex-direction:column;">
+							Date To
+							<input type="date" name="date_to" value="{{ date_to|default:'' }}" style="width:100%;margin-top:6px;" />
+						</label>
                     </div>
                     <div class="filter-actions">
                         <button type="submit" class="filter-apply">Apply</button>
-                        <button type="button" id="closeFilter" class="filter-close">Close</button>
+                        <button type="button" id="closeFilter" class="filter-close">Clear Filters</button>
                     </div>
                 </div>
             </form>
-        </div>
+        </div> 
+         
+        <div class="container-a">
+            <div class="text-sort-container">
+                <div class="project-text">Exports</div>
+            </div>
+		</div>
 
         <!-- Table Section -->
         <table class="user-table">
@@ -501,17 +117,17 @@
                     <th>Type</th>
                     <th>Date Submitted</th>
                     <th>Submitted By</th>
-                    <th></th>
-                    <th class="action-col">Action</th>
+                    <th>Preview</th>
+                    <th class="action-col">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for export in page_obj %}
-                <tr>
+                <tr id="export-{{ export.id }}">
                     <td>{{ export.get_type_display }}</td>
                     <td>{{ export.date_submitted|date:"Y-m-d" }}</td>
-                    <td>{{ export.submitted_by.get_full_name }}</td>
-                    <td style="text-align:center;">
+                    <td><a href="{% url 'user_profile' export.submitted_by.id %}" class="name-link">{{ export.submitted_by.get_full_name }}</a></td>
+                    <td style="text-align:start;">
                         {% if export.type == 'PROJECT' %}
                             <a href="{% url 'export_project' %}?{{ export.querystring|safe }}" style="color:#2EA8FF;">Download</a>
                         {% elif export.type == 'USER' %}
@@ -520,14 +136,20 @@
                             <span style="color:#888;">N/A</span>
                         {% endif %}
                     </td>
-                    <td class="action-col" style="text-align:center;">
+                    <td class="action-col" style="display:block;">
                         {% if export.status == 'PENDING' %}
-                            <button class="action-btn approve-btn" title="Approve" data-id="{{ export.id }}">Approve</button>
-                            <button class="action-btn reject-btn" title="Reject" data-id="{{ export.id }}">Reject</button>
+                            <form method="post" action="{% url 'approve_export_request' export.id %}" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="action-btn approve-btn" title="Approve">Approve</button>
+                            </form>
+                            <form method="post" action="{% url 'reject_export_request' export.id %}" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="action-btn reject-btn" title="Reject">Reject</button>
+                            </form>
                         {% elif export.status == 'APPROVED' %}
-                            <button class="action-btn" title="Already approved" disabled>Approved</button>
+                            <button class="action-btn" title="Already approved" style="color:#999;" disabled>Approved</button>
                         {% elif export.status == 'REJECTED' %}
-                            <button class="action-btn" title="Already rejected" disabled>Rejected</button>
+                            <button class="action-btn" title="Already rejected" style="color:#999;" disabled>Rejected</button>
                         {% endif %}
                     </td>
                 </tr>
@@ -562,11 +184,32 @@
 				<button class="pagination-button" disabled>Next</button>
 				<button class="pagination-button" disabled>Last</button>
 			{% endif %}
-
-			<span class="page-info">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
 		</div>
 
 	</div>
+
+<!-- Rejected Export Modal -->
+<div id="rejectedExportModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; justify-content:center; align-items:center;">
+    <div style="background:white; border-radius:12px; padding:32px; max-width:500px; width:90%; box-shadow:0 4px 24px rgba(0,0,0,0.2);">
+        <div style="text-align:center; margin-bottom:24px;">
+            <div style="width:64px; height:64px; margin:0 auto 16px; background:#FEE2E2; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+                <i class="fa-solid fa-times" style="font-size:32px; color:#DC2626;"></i>
+            </div>
+            <h2 style="margin:0 0 8px; font-size:24px; color:#1F2937;">Export Request Rejected</h2>
+            <p style="margin:0; color:#6B7280; font-size:15px;">Your export request was not approved</p>
+        </div>
+        <div style="background:#F0F9FF; border:1px solid #BFDBFE; border-radius:8px; padding:16px; margin-bottom:24px;">
+            <p style="margin:0; color:#1E40AF; font-size:14px; line-height:1.5; text-align:center;">
+                Don't worry! You can submit a new export request anytime. Please ensure your request meets the required criteria and try again.
+            </p>
+        </div>
+        <div style="display:flex; gap:12px; justify-content:center;">
+            <button onclick="closeRejectedModal()" style="padding:12px 24px; background:#0A6C44; color:white; border:none; border-radius:8px; font-size:15px; font-weight:500; cursor:pointer; transition:all 0.2s;">
+                Understood
+            </button>
+        </div>
+    </div>
+</div>
 
 <!-- SVG Sprite Section -->
 <svg style="display:none;">
@@ -630,7 +273,8 @@
     if (closeFilter && filterDropdown) {
         closeFilter.addEventListener('click', function(e) {
             e.preventDefault();
-            filterDropdown.style.display = 'none';
+            // Clear filters by redirecting to base URL without query parameters
+            window.location.href = window.location.pathname;
         });
     }
     // Hide dropdown when clicking outside
@@ -640,67 +284,47 @@
         }
     });
 
-    // Approve button AJAX
-    document.querySelectorAll('.approve-btn').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            var id = btn.getAttribute('data-id');
-            fetch('/exports/approve/' + id + '/', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken'),
-                    'Approve': 'application/json',
-                },
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.message) {
-                    // Update row to show approved state (text version)
-                    btn.parentElement.innerHTML = '<button class="action-btn" title="Already approved" disabled style="cursor:not-allowed;opacity:0.6;">Approved</button>';
-                } else {
-                    alert(data.error || 'Failed to approve.');
-                }
-            });
-        });
-    });
-    // Reject button AJAX
-    document.querySelectorAll('.reject-btn').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            var id = btn.getAttribute('data-id');
-            fetch('/exports/reject/' + id + '/', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken'),
-                    'Approve': 'application/json',
-                },
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.message) {
-                    // Update row to show rejected state (text version)
-                    btn.parentElement.innerHTML = '<button class="action-btn" title="Already rejected" disabled style="cursor:not-allowed;opacity:0.6;">Rejected</button>';
-                } else {
-                    alert(data.error || 'Failed to reject.');
-                }
-            });
-        });
-    });
-    // CSRF helper
-    function getCookie(name) {
-        let cookieValue = null;
-        if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const cookie = cookies[i].trim();
-                if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                    break;
-                }
+    // No AJAX needed - using simple form submissions with redirects
+    // Django messages will show feedback after redirect
+    
+    // Modal functions for rejected exports
+    function showRejectedModal() {
+        const modal = document.getElementById('rejectedExportModal');
+        if (modal) {
+            modal.style.display = 'flex';
+        }
+    }
+    
+    function closeRejectedModal() {
+        const modal = document.getElementById('rejectedExportModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+    
+    // Highlight export from notification URL anchor
+    document.addEventListener('DOMContentLoaded', function() {
+        const hash = window.location.hash;
+        if (hash && hash.startsWith('#export-')) {
+            const exportRow = document.querySelector(hash);
+            if (exportRow) {
+                // Scroll to the row
+                exportRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                // Highlight the row temporarily
+                exportRow.style.backgroundColor = '#fff3cd';
+                exportRow.style.transition = 'background-color 0.3s ease';
+                
+                // Remove highlight after 3 seconds
+                setTimeout(() => {
+                    exportRow.style.backgroundColor = '';
+                }, 3000);
+                
+                // Note: Modal for rejected exports is only shown from notification page
+                // (for the person who submitted and got rejected, not for approvers)
             }
         }
-        return cookieValue;
-    }
+    });
 </script>
 
 </body>

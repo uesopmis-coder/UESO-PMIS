@@ -15,9 +15,12 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.static import serve
+from rest_framework.authtoken import views as authtoken_views
+from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 urlpatterns = [
     # EXTERNAL APPS
@@ -39,15 +42,36 @@ urlpatterns = [
     path('calendar/', include('shared.event_calendar.urls')),       # Calendar
     path('downloadables/', include('shared.downloadables.urls')),   # Downloadables
     path('projects/', include('shared.projects.urls')),             # Projects
+    path('expenses/', include('shared.budget.expenses_urls')),      # Expenses (faculty budget)
     path('requests/', include('shared.request.urls')),              # Requests
 
     # SYSTEM APPS
     path('logs/', include('system.logs.urls')),                     # Logs
     path('exports/', include('system.exports.urls')),               # Exports
-    # Notifications (None Yet)
-    # Settings (None Yet)
+    path('notifications/', include('system.notifications.urls')),   # Notifications
+    path('settings/', include('system.settings.urls')),             # Settings
     path('', include('system.users.urls')),                         # Users
-] 
+    
+    # Social Auth URLs
+    path('oauth/', include('social_django.urls', namespace='social')),
 
+    path('api/calendar/', include('shared.event_calendar.api_urls')),
+    path('api/requests/', include('shared.request.api_urls')), 
+    path('api/projects/', include('shared.projects.api_urls')),
+    path('api/get-token/', authtoken_views.obtain_auth_token, name='api_get_token'),
+    
+    # API Documentation
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Optional UI:
+    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+]
+
+# Serve media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    # Serve media files in production using Django's serve view
+    urlpatterns += [
+        re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+    ]

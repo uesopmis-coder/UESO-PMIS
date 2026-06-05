@@ -1,14 +1,16 @@
 from django.urls import path
 from .views import (
     add_project_view, admin_submission_action, projects_dispatcher, project_profile,
-    project_overview, project_providers, project_events, project_files, project_submissions, project_expenses, project_evaluations,
-    project_submissions_details,
-    cancel_project, undo_cancel_project,
+    project_overview, project_providers, project_events, project_files, project_submissions, project_expenses, project_invoices, project_evaluations,
+    project_submissions_details, edit_project_evaluation, delete_project_evaluation,
+    cancel_project, undo_cancel_project, check_college_budget, delete_project,
+    public_activity_evaluation, activity_evaluation_qr, activity_evaluations,
 )
 
 urlpatterns = [
     path('', projects_dispatcher, name='project_dispatcher'),
     path('add/', add_project_view, name='add_project'),
+    path('check-budget/', check_college_budget, name='check_college_budget'),
 
     path('<int:pk>/', project_profile, name='project_profile'),
     path('<int:pk>/overview/', project_overview, name='project_overview'),
@@ -17,11 +19,21 @@ urlpatterns = [
     path('<int:pk>/files/', project_files, name='project_files'),
     path('<int:pk>/submission/', project_submissions, name='project_submissions'),
     path('<int:pk>/expenses/', project_expenses, name='project_expenses'),
+    path('<int:pk>/invoices/', project_invoices, name='project_invoices'),
     path('<int:pk>/evaluations/', project_evaluations, name='project_evaluations'),
+    path('<int:pk>/evaluations/<int:eval_id>/edit/', edit_project_evaluation, name='edit_project_evaluation'),
+    path('<int:pk>/evaluations/<int:eval_id>/delete/', delete_project_evaluation, name='delete_project_evaluation'),
+    
+    path('<int:pk>/delete/', delete_project, name='delete_project'),
 
     path('<int:pk>/submission/<int:submission_id>/', project_submissions_details, name='project_submissions_details'),
     path('<int:pk>/submission/<int:submission_id>/admin_action/', admin_submission_action, name='admin_submission_action'),
 
     path('<int:pk>/cancel/', cancel_project, name='cancel_project'),
     path('<int:pk>/undo_cancel/', undo_cancel_project, name='undo_cancel_project'),
+    
+    # Activity Evaluation Routes
+    path('evaluate/<uuid:token>/', public_activity_evaluation, name='public_activity_evaluation'),
+    path('<int:pk>/activities/<int:activity_id>/evaluations/', activity_evaluations, name='activity_evaluations'),
+    path('<int:pk>/activities/<int:activity_id>/evaluation-qr/', activity_evaluation_qr, name='activity_evaluation_qr'),
 ]

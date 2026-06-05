@@ -22,19 +22,19 @@ def user_about_us(request):
 	return render(request, 'about_us/user_about_us.html', {'about': about})
 
 
-@role_required(allowed_roles=["PROGRAM_HEAD", "DEAN", "COORDINATOR"])
+@role_required(allowed_roles=["PROGRAM_HEAD", "DEAN", "COORDINATOR"], require_confirmed=True)
 def superuser_about_us(request):
 	about = AboutUs.objects.first()
 	return render(request, 'about_us/superuser_about_us.html', {'about': about})
 
 
-@role_required(allowed_roles=["UESO", "DIRECTOR", "VP"])
+@role_required(allowed_roles=["UESO", "DIRECTOR", "VP"], require_confirmed=True)
 def admin_about_us(request):
 	about = AboutUs.objects.first()
 	return render(request, 'about_us/admin_about_us.html', {'about': about})
 
 
-@role_required(allowed_roles=["UESO", "DIRECTOR", "VP"])
+@role_required(allowed_roles=["UESO", "DIRECTOR", "VP"], require_confirmed=True)
 def edit_about_us(request):
 	about = AboutUs.objects.first()
 
@@ -47,7 +47,7 @@ def edit_about_us(request):
 			about.edited_by = request.user
 			about.edited_at = timezone.now()
 			about.save()
-			return redirect('about_us_dispatcher')
+			return redirect('/about-us/?success=true&action=updated')
 	else:
 		form = AboutUsForm(instance=about)
 	return render(request, 'about_us/edit_about_us.html', {'about': about, 'form': form})

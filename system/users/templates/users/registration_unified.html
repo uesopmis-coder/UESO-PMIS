@@ -1,0 +1,926 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+<title>{{ role_display }} Registration</title>
+<meta charset="UTF-8">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link href="{% static 'users/regis_style.css' %}" rel="stylesheet">
+<link rel="shortcut icon" type="ico" href="{% static 'ueso.ico' %}">
+
+<style>
+/* Custom styles were removed as requested. */
+</style>
+</head>
+
+<body>
+    <form id="registration-form" method="POST" enctype="multipart/form-data" autocomplete="off">
+        {% csrf_token %}
+        
+        <div class="card step-content" id="step1" style="display:block;">
+            <h2>Create {{ role_display }} Account</h2>
+            <hr>
+            <p class="subtitle">
+                <i class="fa-regular fa-id-card subtitle-icon" aria-hidden="true"></i>
+                Input your Contact and Personal Details.
+            </p>
+            <div class="form-grid">
+                <div class="form-group">
+                    <div class="form-label">Given Name:<span class="required"> *</span></div>
+                    <input class="form-input" type="text" name="given_name" id="id_given_name" value="{{ form.given_name.value|default:'' }}">
+                </div>
+                <div class="form-group">
+                    <div class="form-label">Email:<span class="required"> *</span></div>
+                    <input class="form-input" type="email" name="email" id="id_email" value="{{ form.email.value|default:'' }}">
+                    <div id="email-error" class="email-error"></div>
+                </div>
+                <div class="form-group">
+                    <div style="display: flex; flex-direction: row; gap: 12px;">
+                        <div>
+                            <div class="form-label">M.I.:</div>
+                            <input class="form-input" type="text" name="middle_initial" id="id_middle_initial" maxlength="1" value="{{ form.middle_initial.value|default:'' }}">
+                        </div>
+                        <div>
+                            <div class="form-label">Suffix:</div>
+                            <input class="form-input" type="text" name="suffix" id="id_suffix" value="{{ form.suffix.value|default:'' }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="form-label">Contact Number:<span class="required"> *</span></div>
+                    <input class="form-input" type="text" name="contact_no" id="id_contact_no" value="{{ form.contact_no.value|default:'' }}">
+                </div>
+                <div class="form-group">
+                    <div class="form-label">Last Name:<span class="required"> *</span></div>
+                    <input class="form-input" type="text" name="last_name" id="id_last_name" value="{{ form.last_name.value|default:'' }}">
+                </div>
+                <div class="form-group">
+                    <div class="form-label">Sex:<span class="required"> *</span></div>
+                    <select class="form-input" name="sex" id="id_sex">
+                        <option value="">Select Sex</option>
+                        <option value="MALE" {% if form.sex.value == "MALE" %}selected{% endif %}>Male</option>
+                        <option value="FEMALE" {% if form.sex.value == "FEMALE" %}selected{% endif %}>Female</option>
+                    </select>
+                </div>
+            </div>
+            <div class="actions">
+                <a class="back-btn" href="/register/">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span class="back-btn-text">Back to Selection</span>
+                </a>
+                <button class="proceed-btn" type="button" onclick="nextStep(1)">
+                    <span class="back-btn-text">Proceed</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="card step-content" id="step2" style="display:none;">
+            <h2>Create {{ role_display }} Account</h2>
+            <hr>
+            <p class="subtitle">
+                <i class="fa-solid fa-briefcase subtitle-icon"></i>
+                Input your Professional Details and Set Password.
+            </p>
+            <div class="form-grid">
+                {% if role == 'FACULTY' %}
+                    <div class="form-group">
+                        <div class="form-label">College:<span class="required"> *</span></div>
+                        <select class="form-input" name="college" id="id_college">
+                            <option value="">Select College</option>
+                            {% for college in colleges %}
+                                <option value="{{ college.id }}" data-campus-id="{{ college.campus.id }}" {% if form.college.value == college.id %}selected{% endif %}>{{ college.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group derived-field">
+                        <div class="form-label">Campus:</div>
+                        <select class="form-input" name="campus_display" id="id_campus" disabled>
+                            <option value="">Select Campus</option>
+                            {% for campus in campuses %}
+                                <option value="{{ campus.id }}" {% if form.campus.value == campus.id %}selected{% endif %}>{{ campus.name }}</option>
+                            {% endfor %}
+                           </select>
+                         <input type="hidden" name="campus" id="id_campus_hidden" value="{{ form.campus.value|default:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">Degree:<span class="required"> *</span></div>
+                        <input class="form-input" type="text" name="degree" id="id_degree" value="{{ form.degree.value|default:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">Expertise:<span class="required"> *</span></div>
+                        <input class="form-input" type="text" name="expertise" id="id_expertise" value="{{ form.expertise.value|default:'' }}">
+                    </div>
+                {% elif role == 'IMPLEMENTER' %}
+                    <div class="form-group">
+                        <div class="form-label">Degree:<span class="required"> *</span></div>
+                        <input class="form-input" type="text" name="degree" id="id_degree" value="{{ form.degree.value|default:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">Expertise:<span class="required"> *</span></div>
+                        <input class="form-input" type="text" name="expertise" id="id_expertise" value="{{ form.expertise.value|default:'' }}">
+                    </div>
+                    <div></div><div></div> {% elif role == 'CLIENT' %}
+                    <div class="form-group">
+                        <div class="form-label">Company:<span class="required"> *</span></div>
+                        <input class="form-input" type="text" name="company" id="id_company" value="{{ form.company.value|default:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">Industry:<span class="required"> *</span></div>
+                        <input class="form-input" type="text" name="industry" id="id_industry" value="{{ form.industry.value|default:'' }}">
+                    </div>
+                    <div></div><div></div> {% endif %}
+                
+                <div class="form-group">
+                    <div class="form-label">Password:<span class="required"> *</span></div>
+                    <div class="input-group">
+                        <input class="form-input" type="password" name="password" id="id_password" onkeyup="checkPasswordStrength();">
+                        <span class="input-group-text toggle-password" id="togglePassword">
+                            <i class="fa-solid fa-eye-slash" style="cursor: pointer;"></i>
+                        </span>
+                    </div>
+                    <div class="progress mt-1" style="height: 5px;">
+                        <div id="password-strength-bar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <small id="passwordHelpBlock" class="form-text text-muted" style="font-size: 0.75rem; color: #718096 !important; margin-top: 0.25rem;">
+                        Password must be at least 8 characters long, and include uppercase, lowercase, and a number.
+                    </small>
+                </div>
+                <div class="form-group">
+                    <div class="form-label">Confirm Password:<span class="required"> *</span></div>
+                    <div class="input-group">
+                        <input class="form-input" type="password" name="confirm_password" id="id_confirm_password">
+                        <span class="input-group-text toggle-password" id="toggleConfirmPassword">
+                            <i class="fa-solid fa-eye-slash" style="cursor: pointer;"></i>
+                        </span>
+                    </div>
+                </div>
+
+                <div></div>
+
+                <div class="form-group full-width">
+                    <label style="display:flex; align-items:flex-start; font-size:0.875rem; cursor:pointer;">
+                        <input type="checkbox" id="terms_checkbox" style="margin-right:0.5rem; margin-top:0.25rem;width:auto;">
+                        <span>I agree to the <a href="#" data-bs-toggle="modal" data-bs-target="#termsModal" style="text-decoration:underline;">Terms and Conditions</a> and <a href="#" data-bs-toggle="modal" data-bs-target="#termsModal" style="text-decoration:underline;">Privacy Policy</a></span>
+                    </label>
+                    <div id="terms-error-container"></div>
+                </div>
+
+            </div>
+            <div class="actions">
+                <a class="back-btn" onclick="prevStep(2)">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span class="back-btn-text">Back</span>
+                </a>
+                <button class="proceed-btn" type="button" onclick="nextStep(2)">
+                    <span class="back-btn-text">Proceed</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="card step-content" id="step3" style="display:none;">
+            <h2>Create {{ role_display }} Account</h2>
+            <hr>
+            <p class="subtitle">
+                <i class="fa-solid fa-id-card subtitle-icon"></i>
+                Upload Valid ID and Accept Terms.
+            </p>
+            <div class="form-grid" style="display:flex;flex-direction: column;">
+                <div class="form-group full-width">
+                    <div class="form-label">Preferred ID Type:<span class="required"> *</span></div>
+                    <select class="form-input" name="preferred_id" id="id_preferred_id">
+                        <option value="">Select ID Type</option>
+                        {% for value, label in form.fields.preferred_id.choices %}
+                            {% if value %}
+                                <option value="{{ value }}">{{ label }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group full-width">
+                    <div class="form-label">Upload Valid ID:<span class="required"> *</span></div>
+                    
+                    <label for="id_valid_id" id="upload-label" class="file-upload-label d-flex flex-column align-items-center justify-content-center p-4 border rounded text-center" 
+                            style="border-style: dashed !important; transition: all 0.2s ease; cursor: pointer; background: #F7FAFC; min-height: 100px;"
+                            ondragover="event.preventDefault(); this.classList.add('bg-light', 'border-primary');"
+                            ondragleave="this.classList.remove('bg-light', 'border-primary');"
+                            ondrop="this.classList.remove('bg-light', 'border-primary');">
+                        <svg class="upload-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                        </svg>
+                        <span class="upload-text text-muted mt-2">
+                            Drag and drop file here or <span class="text-primary fw-bold">click to upload</span>
+                        </span>
+                    </label>
+                    <input type="file" id="id_valid_id" name="valid_id" accept="image/*,application/pdf" style="display:none;">
+                    <div id="file-preview" class="d-flex align-items-center p-2 mt-2 border rounded" style="display:none !important; background:#EDF2F7; border-color:#BBF7D0 !important;">
+                        <i class="fa-solid fa-file-image me-2" style="color:#0099FF; font-size:1.25rem;"></i> 
+                        <span id="file-name" class="fw-bold" style="font-size: 0.875rem; color:#2D3748;"></span>
+                        <button type="button" class="btn-close ms-auto" aria-label="Remove file" onclick="removeUploadedFile()"></button>
+                    </div>
+                </div>
+
+            </div>
+            <div class="actions">
+                <a class="back-btn" onclick="prevStep(3)">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span class="back-btn-text">Back</span>
+                </a>
+                <button class="proceed-btn" id="proceed-step3-btn" type="button" onclick="nextStep(3)">
+                    <span class="back-btn-text" id="proceed-step3-text">Proceed</span>
+                    <i class="fa-solid fa-arrow-right" id="proceed-step3-arrow"></i>
+                    <i class="fa-solid fa-spinner fa-spin" id="proceed-step3-spinner" style="display:none; margin-left:0.5rem;"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="card step-content" id="step4" style="display:none;">
+            <h2>Email Verification</h2>
+            <hr>
+            <p class="subtitle">
+                <i class="fa-solid fa-envelope subtitle-icon" aria-hidden="true"></i>
+                Enter the 6-digit verification code sent to your email.
+            </p>
+            <div class="form-grid" style="display: flex;justify-content: center;">
+                <div class="form-group full-width">
+                    <div class="form-label">Verification Code:<span class="required"> *</span></div>
+                    <input class="form-input" type="text" name="verification_code" id="id_verification_code" maxlength="6" placeholder="000000" style="text-align:center; font-size:1.5rem; letter-spacing:0.5rem; font-weight:600;">
+                    <div id="code-error" class="email-error"></div>
+                    <p style="font-size:0.875rem; color:#718096; margin-top:0.5rem;">
+                        Didn't receive the code? 
+                        <a href="#" id="resend-code-link">
+                            <span id="resend-code-text">Resend Code</span>
+                            <i class="fa-solid fa-spinner fa-spin" id="resend-code-spinner" style="display:none; margin-left:0.25rem;"></i>
+                        </a>
+                    </p>
+                </div>
+            </div>
+            <div class="actions">
+                <a class="back-btn" onclick="prevStep(4)">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span class="back-btn-text">Back</span>
+                </a>
+                <button class="proceed-btn" id="verify-submit-btn" type="submit">
+                    <span class="back-btn-text" id="verify-submit-text">Verify & Submit</span>
+                    <i class="fa-solid fa-arrow-right" id="verify-submit-arrow"></i>
+                    <i class="fa-solid fa-spinner fa-spin" id="verify-submit-spinner" style="display:none; margin-left:0.5rem;"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="card step-content" id="step5" style="display: none; text-align: center; padding: 3rem 2rem;">
+            <h2 style="font-size: 2.75rem;font-weight:600;color:#2D3748;margin-bottom: 2rem;text-align:center;">THANK YOU FOR REGISTERING</h2>
+            <div style="display:inline-flex; align-items:center; justify-content:center; width:80px; height:80px; background:#E6F7FF; border-radius:50%; margin:0 auto 1.5rem;">
+                <i class="fa-solid fa-check" style="font-size:2.5rem; color:#0099FF;"></i>
+            </div>
+            
+            <p style="font-size:1rem;color:#718096;line-height:1.6;/* max-width:400px; */margin:0 auto 2rem;">
+                Your registration has been submitted successfully.<br>
+                We will review your details and send you an email once your account is approved.
+            </p>
+            <a href="/login/" class="proceed-btn" style="display:inline-flex; align-items:center; text-decoration:none; padding:0.75rem 2rem;">
+                <i class="fa-solid fa-arrow-left"></i><span>Back to Login</span>
+            </a>
+        </div>
+    </form>
+
+    <div id="custom-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+        <div style="background:white; padding:2rem; border-radius:8px; max-width:400px; text-align:center;">
+            <p id="custom-modal-message" style="margin-bottom:1.5rem; font-size:1rem; color:#2D3748;"></p>
+            <button onclick="closePopup()" style="background:#0099FF; color:white; padding:0.5rem 2rem; border:none; border-radius:4px; cursor:pointer; font-size:1rem;">OK</button>
+        </div>
+    </div>
+
+    <div id="code-display-modal" style="display:none; position:fixed; top:20px; right:20px; background:white; padding:1.5rem; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:2000; min-width:280px; border-left:4px solid #0099FF;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <h4 style="margin:0; font-size:0.875rem; font-weight:600; color:#2D3748;">Verification Code (Testing)</h4>
+            <button onclick="closeCodeModal()" style="background:none; border:none; cursor:pointer; color:#A0AEC0; font-size:1.25rem; padding:0; line-height:1;">&times;</button>
+        </div>
+        <div style="background:#F7FAFC; padding:1rem; border-radius:6px; margin-bottom:1rem; text-align:center;">
+            <div style="font-size:0.75rem; color:#718096; margin-bottom:0.25rem;">Your Code:</div>
+            <div id="code-value" style="font-size:2rem; font-weight:700; color:#0099FF; letter-spacing:0.5rem; font-family:monospace;"></div>
+        </div>
+        <button onclick="copyCode()" id="copy-code-btn" style="width:100%; background:#0099FF; color:white; padding:0.75rem; border:none; border-radius:6px; cursor:pointer; font-size:0.875rem; font-weight:600; transition:all 0.2s;">
+            <i class="fa-solid fa-copy" style="margin-right:0.5rem;"></i>
+            <span id="copy-btn-text">Copy Code</span>
+        </button>
+    </div>
+
+    <div class="modal fade" id="termsModal" tabindex="-1" aria-labelledby="termsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold" id="termsModalLabel">Terms and Conditions & Privacy Policy</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <h3 class="fs-5 mb-3 text-dark">1. Acceptance of Terms</h3>
+                    <p class="small text-muted">By registering for an account, you agree to these Terms and Conditions ("T&C") and our Privacy Policy. This system is designed for the management, execution, and reporting of Extension Projects.</p>
+
+                    <h3 class="fs-5 mb-3 text-dark mt-4">2. Data Submission and Usage</h3>
+                    <p class="small text-muted">You understand and agree that the primary function of this system involves the collection and display of data related to Extension Projects. This includes, but is not limited to:</p>
+                    <ul class="small text-muted">
+                        <li>Project Files and Submissions: All documents, reports, and files submitted by users regarding project implementation and management.</li>
+                        <li>Activity Images and Media: Visual documentation, including photographs and videos, of project activities and accomplishments.</li>
+                        <li>Evaluation Data: Feedback, metrics, and assessment results related to project performance and effectiveness.</li>
+                    </ul>
+
+                    <h3 class="fs-5 mb-3 text-dark mt-4">3. Public Disclosure and Transparency (Crucial Clause)</h3>
+                    <p class="small text-muted fw-bold">You acknowledge that, in the interest of public transparency and institutional reporting, the following documents and media related to completed Extension Projects will be permanently displayed to the public on designated platforms (e.g., the public website and institutional reports):</p>
+                    <ul class="small text-muted">
+                        <li>Completed Extension Projects: Project titles, descriptions, and summary reports.</li>
+                        <li>Accomplishment Reports & Activities: Detailed reports of activities undertaken and associated images/videos.</li>
+                        <li>Evaluation Results: Non-identifying summary data from project evaluations.</li>
+                    </ul>
+                    <p class="small text-muted">By submitting data, you grant the University Extension Services Office (UESO) an irrevocable, perpetual, non-exclusive license to use, reproduce, display, and publish this public-facing material.</p>
+
+                    <h3 class="fs-5 mb-3 text-dark mt-4">4. Account Responsibility</h3>
+                    <p class="small text-muted">You are responsible for maintaining the confidentiality of your password and are responsible for all activities that occur under your account.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary cancel" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="agreeToTerms()">I have Read and Agree</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <svg style="display:none;">
+        <symbol id="icon-arrow-right" viewBox="0 0 18 19">
+            <path d="M13.3925 10.4L7.2325 16.56L8.8 18.1L17.6 9.3L8.8 0.5L7.2325 2.04L13.3925 8.2H0V10.4H13.3925Z" fill="#0099FF"/>
+        </symbol>
+        <symbol id="icon-arrow-left" viewBox="0 0 18 19">
+            <path d="M4.60755 10.4L10.7675 16.56L9.20005 18.1L0.400047 9.3L9.20005 0.5L10.7675 2.04L4.60755 8.2H18V10.4H4.60755Z" fill="#0099FF"/>
+        </symbol>
+        <symbol id="icon-upload" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+            <path d="M12,11L8,15H16L12,11Z" />
+        </symbol>
+    </svg>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+    <script>
+        const ROLE = '{{ role }}';
+        
+        // --- NEW DATA MAP FOR CAMPUS SYNCHRONIZATION ---
+        let COLLEGE_CAMPUS_MAP = {};
+        
+        // --- CAMPUS SYNCHRONIZATION FUNCTIONS ---
+        
+        function collectCampusMapping() {
+            const collegeSelect = document.getElementById('id_college');
+            if (!collegeSelect) return;
+            
+            collegeSelect.querySelectorAll('option').forEach(option => {
+                const collegeId = option.value;
+                const campusId = option.dataset.campusId; 
+                if (collegeId && campusId) {
+                    COLLEGE_CAMPUS_MAP[collegeId] = campusId;
+                }
+            });
+        }
+        
+        function synchronizeCampus() {
+            const collegeSelect = document.getElementById('id_college');
+            const campusSelect = document.getElementById('id_campus');
+            const campusHiddenInput = document.getElementById('id_campus_hidden');
+
+            if (collegeSelect && campusSelect && campusHiddenInput && ROLE === 'FACULTY') {
+                const selectedCollegeId = collegeSelect.value;
+                const correspondingCampusId = COLLEGE_CAMPUS_MAP[selectedCollegeId] || '';
+
+                campusSelect.value = correspondingCampusId;
+                campusHiddenInput.value = correspondingCampusId;
+            }
+        }
+        
+        // --- DOCUMENT READY LOGIC ---
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const emailInput = document.getElementById('id_email');
+            const emailError = document.getElementById('email-error');
+            if (emailInput) {
+                emailInput.addEventListener('blur', function() {
+                    const email = emailInput.value.trim();
+                    if (!email) return;
+                    fetch('/check-email/?email=' + encodeURIComponent(email))
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.exists) {
+                                emailError.textContent = 'This email is already registered.';
+                                emailError.style.display = 'block';
+                            } else {
+                                emailError.textContent = '';
+                                emailError.style.display = 'none';
+                            }
+                        })
+                        .catch(() => {
+                            emailError.textContent = 'Error checking email.';
+                            emailError.style.display = 'block';
+                        });
+                });
+            }
+            
+            // Re-apply file upload state on load if a file exists (for form validation re-renders)
+            const fileInput = document.getElementById('id_valid_id');
+            if (fileInput && fileInput.files.length > 0) {
+                updateFileUploadUI(fileInput.files[0]);
+            }
+
+            // Init check for password strength on load if value exists
+            if (document.getElementById('id_password') && document.getElementById('id_password').value) {
+                checkPasswordStrength();
+            }
+            
+            // --- NEW: INITIALIZE CAMPUS SYNC ---
+            if (ROLE === 'FACULTY') {
+                collectCampusMapping();
+                synchronizeCampus();
+
+                const collegeSelect = document.getElementById('id_college');
+                if (collegeSelect) {
+                    collegeSelect.addEventListener('change', synchronizeCampus);
+                }
+            }
+        });
+
+        // --- PASSWORD AND MODAL FUNCTIONS ---
+        
+        function checkPasswordStrength() {
+            const password = document.getElementById('id_password').value;
+            const bar = document.getElementById('password-strength-bar');
+            let score = 0;
+            
+            if (password.length >= 8) score += 25;
+            if (/[A-Z]/.test(password)) score += 25;
+            if (/[a-z]/.test(password)) score += 25;
+            if (/[0-9!@#$%^&*()]/.test(password)) score += 25;
+
+            bar.style.width = score + '%';
+            bar.setAttribute('aria-valuenow', score);
+            
+            bar.className = 'progress-bar'; 
+            if (score <= 25) {
+                bar.classList.add('bg-danger');
+            } else if (score <= 75) {
+                bar.classList.add('bg-warning');
+            } else {
+                bar.classList.add('bg-success');
+            }
+        }
+        
+        document.querySelectorAll('.toggle-password').forEach(toggle => {
+            toggle.addEventListener('click', function() {
+                const input = this.closest('.input-group').querySelector('input');
+                const icon = this.querySelector('i');
+                
+                const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+                input.setAttribute('type', type);
+                
+                icon.classList.toggle('fa-eye');
+                icon.classList.toggle('fa-eye-slash');
+            });
+        });
+        
+        function agreeToTerms() {
+            document.getElementById('terms_checkbox').checked = true;
+            try {
+                const modalElement = document.getElementById('termsModal');
+                if (modalElement) {
+                    const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+                    modal.hide();
+                }
+            } catch (e) {
+                console.error("Error closing modal:", e);
+            }
+            const termsErr = document.getElementById('terms-error');
+            if (termsErr) termsErr.remove();
+        }
+
+        // --- DRAG AND DROP FILE UPLOAD FUNCTIONS ---
+        const fileInput = document.getElementById('id_valid_id');
+        const uploadLabel = document.getElementById('upload-label');
+        const filePreview = document.getElementById('file-preview');
+        const fileNameSpan = document.getElementById('file-name');
+
+        function updateFileUploadUI(file) {
+            if (file) {
+                fileNameSpan.textContent = file.name;
+                filePreview.style.setProperty('display', 'flex', 'important');
+                uploadLabel.style.background = '#EDF2F7';
+                uploadLabel.style.borderColor = '#0099FF';
+                uploadLabel.style.color = '#0099FF';
+                uploadLabel.querySelector('.upload-text').innerHTML = file.name;
+                uploadLabel.querySelector('.upload-text').classList.remove('text-muted');
+                uploadLabel.querySelector('.upload-text').classList.add('text-primary');
+                uploadLabel.querySelector('.upload-icon').style.color = '#0099FF';
+                uploadLabel.querySelector('.upload-text').style.fontWeight = 'bold';
+            } else {
+                filePreview.style.setProperty('display', 'none', 'important');
+                uploadLabel.style.background = '#F7FAFC';
+                uploadLabel.style.borderColor = '#CBD5E0';
+                uploadLabel.style.color = '#4A5568';
+                uploadLabel.querySelector('.upload-text').innerHTML = 'Drag and drop file here or <span class="text-primary fw-bold">click to upload</span>';
+                uploadLabel.querySelector('.upload-text').classList.remove('text-primary');
+                uploadLabel.querySelector('.upload-text').classList.add('text-muted');
+                uploadLabel.querySelector('.upload-icon').style.color = '#4B5563';
+                uploadLabel.querySelector('.upload-text').style.fontWeight = 'normal';
+            }
+        }
+        
+        function removeUploadedFile() {
+            fileInput.value = '';
+            try {
+                fileInput.files = new DataTransfer().files;
+            } catch (e) {
+                // Some browsers do not allow assigning to .files directly.
+            }
+            updateFileUploadUI(null);
+            clearFieldErrors();
+        }
+
+        if (fileInput) {
+            fileInput.addEventListener('change', function(e) {
+                const selectedFile = (e.target.files && e.target.files.length) ? e.target.files[0] : null;
+                updateFileUploadUI(selectedFile);
+            });
+        }
+        
+        if (uploadLabel) {
+            uploadLabel.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.classList.remove('bg-light', 'border-primary');
+                const files = e.dataTransfer.files;
+                if (files.length) {
+                    try {
+                        const dt = new DataTransfer();
+                        dt.items.add(files[0]);
+                        fileInput.files = dt.files;
+                    } catch (error) {
+                        fileInput.files = files;
+                    }
+                    updateFileUploadUI(files[0]);
+                }
+            });
+        }
+
+        // --- MODAL & ERROR FUNCTIONS (removed for brevity, functional) ---
+        function showPopup(message) {
+            const modal = document.getElementById('custom-modal');
+            const modalMsg = document.getElementById('custom-modal-message');
+            modalMsg.textContent = message;
+            modal.style.display = 'flex';
+        }
+        function closePopup() {
+            document.getElementById('custom-modal').style.display = 'none';
+        }
+        function showCodeModal(code) {
+             document.getElementById('code-value').textContent = code;
+             document.getElementById('code-display-modal').style.display = 'block';
+             setTimeout(() => { closeCodeModal(); }, 30000);
+        }
+        function closeCodeModal() {
+             document.getElementById('code-display-modal').style.display = 'none';
+        }
+        function copyCode() {
+             const code = document.getElementById('code-value').textContent;
+             navigator.clipboard.writeText(code).then(() => {
+                 const btn = document.getElementById('copy-code-btn');
+                 const btnText = document.getElementById('copy-btn-text');
+                 btnText.textContent = 'Copied!';
+                 btn.style.background = '#48BB78';
+                 setTimeout(() => { btnText.textContent = 'Copy Code'; btn.style.background = '#0099FF'; }, 2000);
+             });
+        }
+        function showFieldError(fieldId, message) {
+            const field = document.getElementById(fieldId);
+            if (!field) return;
+            const inputGroup = field.closest('.input-group');
+            if (inputGroup) {
+                 inputGroup.querySelector('.form-input').classList.add('error-input');
+                 const err = document.createElement('div');
+                 err.className = 'field-error';
+                 err.textContent = message;
+                 err.style.color = '#E53E3E';
+                 err.style.fontSize = '0.75rem';
+                 err.style.marginTop = '0.25rem';
+                 inputGroup.parentNode.insertBefore(err, inputGroup.nextSibling);
+                 return;
+            }
+            if (field.tagName === 'SELECT') { field.classList.add('error-select');
+            } else if (field.type === 'file') {
+                 const uploadArea = document.getElementById('upload-label');
+                 uploadArea.style.borderColor = '#E53E3E';
+                 const err = document.createElement('div');
+                 err.className = 'field-error';
+                 err.textContent = message;
+                 err.style.color = '#E53E3E';
+                 err.style.fontSize = '0.75rem';
+                 err.style.marginTop = '0.25rem';
+                 uploadArea.parentNode.appendChild(err);
+                 return;
+            } else { field.classList.add('error-input'); }
+            const err = document.createElement('div');
+            err.className = 'field-error';
+            err.textContent = message;
+            err.style.color = '#E53E3E';
+            err.style.fontSize = '0.75rem';
+            err.style.marginTop = '0.25rem';
+            field.parentNode.appendChild(err);
+        }
+        function clearFieldErrors() {
+             document.querySelectorAll('.error-input').forEach(e => e.classList.remove('error-input'));
+             document.querySelectorAll('.error-select').forEach(e => e.classList.remove('error-select'));
+             document.querySelectorAll('.field-error').forEach(e => e.remove());
+             const termsErr = document.getElementById('terms-error');
+             if (termsErr) termsErr.remove();
+             const uploadArea = document.getElementById('upload-label');
+             if (uploadArea) { uploadArea.style.borderColor = ''; }
+        }
+
+
+        // --- NAVIGATION & VALIDATION ---
+        function nextStep(current) {
+            clearFieldErrors();
+            let valid = true;
+            let formData;
+
+            // Step 1 Validation
+            if (current === 1) {
+                const requiredFields = ['id_given_name', 'id_email', 'id_last_name', 'id_contact_no', 'id_sex'];
+                requiredFields.forEach(function(fieldId) {
+                    const field = document.getElementById(fieldId);
+                    if (field && !field.value.trim()) { valid = false; showFieldError(fieldId, 'This field is required.'); }
+                });
+                const emailInput = document.getElementById('id_email');
+                if (emailInput.value.trim() && !emailInput.value.includes('@')) { valid = false; showFieldError('id_email', 'Please enter a valid email address (must contain "@").'); }
+                const contactInput = document.getElementById('id_contact_no');
+                if (contactInput.value.trim() && !/^\+?[\d\s-]{7,}$/.test(contactInput.value.trim())) { valid = false; showFieldError('id_contact_no', 'Please enter a valid contact number (numbers, spaces, "-", or "+" only).'); }
+
+                if (!valid) { showPopup("Please fill out all required fields and ensure formats are correct."); return; }
+                const emailError = document.getElementById('email-error');
+                if (emailError.style.display === 'block') { showPopup("Please correct the email error before proceeding."); return; }
+                
+                document.getElementById('step1').style.display = 'none';
+                document.getElementById('step2').style.display = 'block';
+            }
+            // Step 2 Validation (Role-Specific + Password)
+            else if (current === 2) {
+                const requiredFields = [];
+                if (ROLE === 'FACULTY') {
+                    requiredFields.push('id_degree', 'id_expertise', 'id_college'); 
+                    const campusHiddenInput = document.getElementById('id_campus_hidden');
+                    if (!campusHiddenInput.value) { valid = false; showFieldError('id_college', 'College selection is required to automatically determine the Campus.'); }
+                } else if (ROLE === 'IMPLEMENTER') { requiredFields.push('id_degree', 'id_expertise');
+                } else if (ROLE === 'CLIENT') { requiredFields.push('id_company', 'id_industry'); }
+                
+                requiredFields.push('id_password', 'id_confirm_password');
+                requiredFields.forEach(function(fieldId) {
+                    const field = document.getElementById(fieldId);
+                    if (field && !field.value.trim()) { valid = false; showFieldError(fieldId, 'This field is required.'); }
+                });
+                
+                const password = document.getElementById('id_password').value;
+                let passwordScore = 0;
+                if (password.length >= 8) passwordScore += 25; if (/[A-Z]/.test(password)) passwordScore += 25; if (/[a-z]/.test(password)) passwordScore += 25; if (/[0-9!@#$%^&*()]/.test(password)) passwordScore += 25;
+                if (passwordScore < 100 && password.length > 0) { valid = false; showFieldError('id_password', 'Password is too weak. It must be strong (8+ chars, upper, lower, and number/symbol).'); }
+                
+                const confirmPassword = document.getElementById('id_confirm_password').value;
+                if (password && confirmPassword && password !== confirmPassword) { valid = false; showFieldError('id_confirm_password', 'Passwords do not match.'); }
+
+                const termsCheckbox = document.getElementById('terms_checkbox');
+                if (!termsCheckbox.checked) { valid = false; const errDiv = document.createElement('div'); errDiv.id = 'terms-error'; errDiv.className = 'field-error'; errDiv.textContent = 'You must agree to the Terms and Conditions and Privacy Policy.'; errDiv.style.color = '#E53E3E'; errDiv.style.fontSize = '0.75rem'; errDiv.style.marginTop = '0.25rem'; document.getElementById('terms-error-container').appendChild(errDiv); }
+
+                if (!valid) { showPopup("Please fill out all required fields and correct errors."); return; }
+                
+                document.getElementById('step2').style.display = 'none';
+                document.getElementById('step3').style.display = 'block';
+            }
+            // Step 3 Validation (ID Upload & Send Code/Cache Data)
+            else if (current === 3) {
+                const preferredIdField = document.getElementById('id_preferred_id');
+                if (!preferredIdField.value) { valid = false; showFieldError('id_preferred_id', 'Please select your ID type.'); }
+
+                const validIdField = document.getElementById('id_valid_id');
+                if (!validIdField.files || validIdField.files.length === 0) { valid = false; showFieldError('id_valid_id', 'Please upload your valid ID.'); }
+
+                if (!valid) { showPopup("Please correct the errors before proceeding."); return; }
+
+                const proceedBtn = document.getElementById('proceed-step3-btn');
+                const proceedText = document.getElementById('proceed-step3-text');
+                const proceedArrow = document.getElementById('proceed-step3-arrow');
+                const proceedSpinner = document.getElementById('proceed-step3-spinner');
+                
+                // Set button to disabled and loading state
+                if (proceedBtn) proceedBtn.disabled = true;
+                if (proceedText) proceedText.textContent = 'Sending Code...';
+                if (proceedArrow) proceedArrow.style.display = 'none';
+                if (proceedSpinner) proceedSpinner.style.display = 'inline-block';
+                
+                // --- POST ALL DATA + FILES to cache it and send the code ---
+                const registrationForm = document.getElementById('registration-form');
+                formData = new FormData(registrationForm);
+                formData.set('role', ROLE);
+
+                // Add hidden campus field value for caching
+                if (ROLE === 'FACULTY') {
+                    formData.set('campus', document.getElementById('id_campus_hidden').value);
+                }
+                
+                fetch('/send-verification-code/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    },
+                    body: formData
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        // Attempt to read JSON error first, if not, throw generic error.
+                        return response.text().then(text => {
+                            try {
+                                const data = JSON.parse(text);
+                                throw new Error(data.error || 'Server validation error.');
+                            } catch (e) {
+                                // If parsing fails (i.e., we got HTML/Unexpected Token), throw original network error.
+                                throw new Error('Unexpected token: Server did not return valid JSON.'); 
+                            }
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('step3').style.display = 'none';
+                        document.getElementById('step4').style.display = 'block';
+                        showPopup('Verification code sent to ' + document.getElementById('id_email').value);
+                    } else if (data.errors) {
+                        for (const field in data.errors) { showFieldError('id_' + field, data.errors[field][0]); }
+                        showPopup('Please correct the validation errors below.');
+                    } else {
+                        showPopup(data.error || 'Failed to send verification code.');
+                    }
+                })
+                .catch(error => {
+                    showPopup('An error occurred during code sending: ' + error.message);
+                    console.error('Error:', error);
+                })
+                .finally(() => { // <--- FINALLY BLOCK TO RE-ENABLE BUTTON
+                    const btn = document.getElementById('proceed-step3-btn');
+                    btn.disabled = false;
+                    document.getElementById('proceed-step3-text').textContent = 'Proceed';
+                    document.getElementById('proceed-step3-arrow').style.display = 'inline-block';
+                    document.getElementById('proceed-step3-spinner').style.display = 'none';
+                });
+            }
+        }
+
+        function prevStep(current) {
+            clearFieldErrors();
+            if (current === 2) {
+                document.getElementById('step2').style.display = 'none';
+                document.getElementById('step1').style.display = 'block';
+            } else if (current === 3) {
+                document.getElementById('step3').style.display = 'none';
+                document.getElementById('step2').style.display = 'block';
+            } else if (current === 4) {
+                document.getElementById('step4').style.display = 'none';
+                document.getElementById('step3').style.display = 'block';
+            }
+        }
+
+        // --- RESEND CODE HANDLER ---
+        document.getElementById('resend-code-link').addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const resendText = document.getElementById('resend-code-text');
+            const resendSpinner = document.getElementById('resend-code-spinner');
+            const resendLink = document.getElementById('resend-code-link');
+            
+            resendLink.style.pointerEvents = 'none';
+            resendText.textContent = 'Sending...';
+            resendSpinner.style.display = 'inline-block';
+            
+            // Only send required data for resend code request (email and role)
+            const email = document.getElementById('id_email').value;
+            const formData = new FormData();
+            formData.append('email', email);
+            formData.append('role', ROLE);
+
+            fetch('/send-verification-code/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                         try {
+                             const data = JSON.parse(text);
+                             throw new Error(data.error || 'Network error.');
+                         } catch (e) {
+                             throw new Error('Unexpected token: Server did not return valid JSON.');
+                         }
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                resendLink.style.pointerEvents = 'auto';
+                resendText.textContent = 'Resend Code';
+                resendSpinner.style.display = 'none';
+                
+                if (data.success) {
+                    showPopup('Verification code resent to ' + email);
+                } else {
+                    showPopup(data.error || 'Failed to resend verification code.');
+                }
+            })
+            .catch(error => {
+                resendLink.style.pointerEvents = 'auto';
+                resendText.textContent = 'Resend Code';
+                resendSpinner.style.display = 'none';
+                showPopup('An error occurred during resend: ' + error.message);
+                console.error('Error:', error);
+            });
+        });
+
+        // --- FINAL SUBMISSION HANDLER ---
+        document.getElementById('registration-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            clearFieldErrors();
+            
+            const code = document.getElementById('id_verification_code').value.trim();
+            if (!code || code.length !== 6) {
+                showFieldError('id_verification_code', 'Please enter a valid 6-digit code.');
+                return;
+            }
+
+            const submitBtn = document.getElementById('verify-submit-btn');
+            const submitText = document.getElementById('verify-submit-text');
+            const submitArrow = document.getElementById('verify-submit-arrow');
+            const submitSpinner = document.getElementById('verify-submit-spinner');
+            
+            submitBtn.disabled = true;
+            submitText.textContent = 'Verifying...';
+            submitArrow.style.display = 'none';
+            submitSpinner.style.display = 'inline-block';
+
+            // CRITICAL FIX: Send ALL form data (including files) + verification code 
+            const formData = new FormData(this);
+
+             if (ROLE === 'FACULTY') {
+                 // Ensure the hidden campus field value is explicitly set
+                 formData.set('campus', document.getElementById('id_campus_hidden').value);
+             }
+
+            // Ensure the verification code is included in the final data sent to the server
+            formData.set('verification_code', code);
+
+
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('step4').style.display = 'none';
+                    document.getElementById('step5').style.display = 'block';
+                } else if (data.error) {
+                    submitBtn.disabled = false;
+                    submitText.textContent = 'Verify & Submit';
+                    submitArrow.style.display = 'inline-block';
+                    submitSpinner.style.display = 'none';
+                    
+                    if (data.errors) {
+                        for (const field in data.errors) {
+                            showFieldError('id_' + field, data.errors[field][0]);
+                        }
+                    } else {
+                        showFieldError('id_verification_code', data.error);
+                    }
+                }
+            })
+            .catch(error => {
+                submitBtn.disabled = false;
+                submitText.textContent = 'Verify & Submit';
+                submitArrow.style.display = 'inline-block';
+                submitSpinner.style.display = 'none';
+                
+                showPopup('An error occurred. Please try again.');
+                console.error('Error:', error);
+            });
+        });
+
+    </script>
+</body>
+</html>
