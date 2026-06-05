@@ -1575,8 +1575,8 @@ import os
 def quick_login(request, role):
     from django.contrib.auth import login, logout, authenticate
 
-    if os.environ.get('DEPLOYED', 'False') == 'True':
-        return redirect("login")
+    # if os.environ.get('DEPLOYED', 'False') == 'True':
+    #     return redirect("login")
 
     # Build test credentials
     username = f"{role.lower()}@example.com"
