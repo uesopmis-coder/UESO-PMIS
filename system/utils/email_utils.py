@@ -345,17 +345,17 @@ def async_send_export_rejected(user_email, export_type):
 
 def async_send_password_reset_code(user_email, reset_code):
     """
-    Send password reset code email with HTML formatting.
+    Send verification code email with HTML formatting.
     
     Args:
         user_email (str): User's email address
-        reset_code (str): 6-digit password reset code
+        reset_code (str): 6-digit verification code
     
     Returns:
         None (email sends in background)
     """
-    subject = 'Password Reset Code - UESOPMIS'
-    message = f'Your password reset code is: {reset_code}\n\nThis code will expire in 10 minutes.\n\nIf you did not request this, please ignore this email.'
+    subject = 'Verification Code - UESOPMIS'
+    message = f'Your verification code is: {reset_code}\n\nThis code will expire in 10 minutes.\n\nIf you did not request this, please ignore this email.'
     html_message = f'''
     <!DOCTYPE html>
     <html>
@@ -372,7 +372,7 @@ def async_send_password_reset_code(user_email, reset_code):
                         <tr>
                             <td style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 30px 40px; text-align: center;">
                                 <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">
-                                    🔐 Password Reset
+                                    🔐 Verification Code
                                 </h1>
                             </td>
                         </tr>
@@ -381,11 +381,11 @@ def async_send_password_reset_code(user_email, reset_code):
                         <tr>
                             <td style="padding: 40px;">
                                 <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 20px;">
-                                    Your Password Reset Code
+                                    Your Verification Code
                                 </h2>
                                 
                                 <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                                    Enter this code to reset your password:
+                                    Enter this code to verify your identity:
                                 </p>
                                 
                                 <!-- Code Display -->
@@ -403,7 +403,7 @@ def async_send_password_reset_code(user_email, reset_code):
                                 
                                 <p style="margin: 20px 0 0 0; padding: 15px; background-color: #fffbeb; border-left: 4px solid #f59e0b; color: #92400e; font-size: 14px; line-height: 1.5;">
                                     <strong>⏱️ This code expires in 10 minutes</strong><br>
-                                    If you didn't request this password reset, please ignore this email or contact support if you have concerns.
+                                    If you didn't request this verification, please ignore this email or contact support if you have concerns.
                                 </p>
                             </td>
                         </tr>
