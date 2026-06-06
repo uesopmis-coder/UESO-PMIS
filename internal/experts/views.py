@@ -4,6 +4,7 @@ from django.views.decorators.http import require_POST
 from system.users.decorators import role_required
 from system.users.decorators import role_required
 from system.users.models import Campus, College, User
+from .space_client import HuggingFaceSpaceTeamGenerationClient, HuggingFaceSpaceTeamGenerationError
 
 import json
 
@@ -296,25 +297,30 @@ def generate_team_view(request):
             except ValueError:
                 college_filter = None
         
-        from .ai_team_generator import get_team_generator
-
-        # Generate Team
-        generator = get_team_generator()
-        team_members = generator.generate_team(
+        # Generate Team via Hugging Face Space
+        client = HuggingFaceSpaceTeamGenerationClient()
+        team_members = client.generate_team(
             keywords=keywords,
             campus_filter=campus_filter,
             college_filter=college_filter,
             num_participants=num_participants,
             include_in_progress=include_in_progress
         )
+
+        user_ids = [member.get('id') for member in team_members if member.get('id')]
+        user_map = {
+            user.id: user
+            for user in User.objects.filter(id__in=user_ids).select_related('college__campus')
+        }
         
 
         # Format Response
         results = []
         for member in team_members:
+            member_user = user_map.get(member.get('id'))
             profile_pic_url = None
-            if member.get('user') and member['user'].profile_picture:
-                profile_pic_url = member['user'].profile_picture.url
+            if member_user and member_user.profile_picture:
+                profile_pic_url = member_user.profile_picture.url
 
             results.append({
                 'id': member['id'],

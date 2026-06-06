@@ -233,6 +233,11 @@ LOGOUT_REDIRECT_URL = '/login/'
 SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = os.environ.get('SOCIAL_AUTH_GOOGLE_OAUTH2_KEY', '')
 SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = os.environ.get('SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET', '')
 
+# AI / ML team generation via Hugging Face Space
+HUGGINGFACE_SPACE_URL = os.environ.get('HUGGINGFACE_SPACE_URL', '').rstrip('/')
+HUGGINGFACE_SPACE_SHARED_SECRET = os.environ.get('HUGGINGFACE_SPACE_SHARED_SECRET', '')
+HUGGINGFACE_SPACE_TIMEOUT = int(os.environ.get('HUGGINGFACE_SPACE_TIMEOUT', '180'))
+
 # Social Auth Pipeline
 SOCIAL_AUTH_PIPELINE = (
     'social_core.pipeline.social_auth.social_details',
