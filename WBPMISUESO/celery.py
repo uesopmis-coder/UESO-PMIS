@@ -7,7 +7,7 @@ app = Celery('WBPMISUESO')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
 if os.environ.get('DEPLOYED', 'False') == 'True':
-	pass
+	app.conf.broker_url = os.environ.get('REDIS_URL')
 else:	
 	app.conf.broker_url = 'redis://127.0.0.1:6379/0'  # Or your Railway Redis URL
 
