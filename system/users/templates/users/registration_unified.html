@@ -851,6 +851,18 @@
         });
 
         // --- FINAL SUBMISSION HANDLER ---
+        function resetVerifySubmitButton() {
+            const submitBtn = document.getElementById('verify-submit-btn');
+            const submitText = document.getElementById('verify-submit-text');
+            const submitArrow = document.getElementById('verify-submit-arrow');
+            const submitSpinner = document.getElementById('verify-submit-spinner');
+
+            if (submitBtn) submitBtn.disabled = false;
+            if (submitText) submitText.textContent = 'Verify & Submit';
+            if (submitArrow) submitArrow.style.display = 'inline-block';
+            if (submitSpinner) submitSpinner.style.display = 'none';
+        }
+
         document.getElementById('registration-form').addEventListener('submit', function(e) {
             e.preventDefault();
             clearFieldErrors();
@@ -865,11 +877,11 @@
             const submitText = document.getElementById('verify-submit-text');
             const submitArrow = document.getElementById('verify-submit-arrow');
             const submitSpinner = document.getElementById('verify-submit-spinner');
-            
-            submitBtn.disabled = true;
-            submitText.textContent = 'Verifying...';
-            submitArrow.style.display = 'none';
-            submitSpinner.style.display = 'inline-block';
+
+            if (submitBtn) submitBtn.disabled = true;
+            if (submitText) submitText.textContent = 'Verifying...';
+            if (submitArrow) submitArrow.style.display = 'none';
+            if (submitSpinner) submitSpinner.style.display = 'inline-block';
 
             // CRITICAL FIX: Send ALL form data (including files) + verification code 
             const formData = new FormData(this);
@@ -895,27 +907,29 @@
                 if (data.success) {
                     document.getElementById('step4').style.display = 'none';
                     document.getElementById('step5').style.display = 'block';
-                } else if (data.error) {
-                    submitBtn.disabled = false;
-                    submitText.textContent = 'Verify & Submit';
-                    submitArrow.style.display = 'inline-block';
-                    submitSpinner.style.display = 'none';
-                    
+                } else {
+                    resetVerifySubmitButton();
+
                     if (data.errors) {
                         for (const field in data.errors) {
-                            showFieldError('id_' + field, data.errors[field][0]);
+                            const fieldMessages = data.errors[field];
+                            if (Array.isArray(fieldMessages) && fieldMessages.length) {
+                                showFieldError('id_' + field, fieldMessages[0]);
+                            }
                         }
-                    } else {
+                    }
+
+                    if (data.error) {
+                        const isExpired = /expired|session expired/i.test(data.error);
                         showFieldError('id_verification_code', data.error);
+                        showPopup(isExpired ? 'Your verification code has expired. Please resend a new code and try again.' : data.error);
+                    } else {
+                        showPopup('Verification failed. Please check the code and try again.');
                     }
                 }
             })
             .catch(error => {
-                submitBtn.disabled = false;
-                submitText.textContent = 'Verify & Submit';
-                submitArrow.style.display = 'inline-block';
-                submitSpinner.style.display = 'none';
-                
+                resetVerifySubmitButton();
                 showPopup('An error occurred. Please try again.');
                 console.error('Error:', error);
             });
